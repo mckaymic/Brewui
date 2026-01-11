@@ -1,0 +1,414 @@
+//
+//  BrowsePackagesView.swift
+//  Brewui
+//
+//  Created by Michael McKay on 1/11/26.
+//
+
+import SwiftUI
+
+/// View for searching and installing new packages
+struct BrowsePackagesView: View {
+    @Bindable var viewModel: BrowsePackagesViewModel
+    @State private var selectedPackage: BrewPackage?
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Search bar
+            searchBar
+            
+            Divider()
+            
+            // Content
+            if viewModel.isSearching {
+                searchingView
+            } else if viewModel.showInitialState {
+                initialStateView
+            } else if viewModel.showEmptyState {
+                emptyStateView
+            } else {
+                searchResultsList
+            }
+        }
+        .sheet(item: $selectedPackage) { package in
+            PackageDetailView(
+                package: package,
+                isInstalled: viewModel.isInstalled(package),
+                onInstall: {
+                    Task {
+                        await viewModel.installPackage(package)
+                    }
+                }
+            )
+        }
+        .overlay(alignment: .bottom) {
+            statusOverlay
+        }
+        .task {
+            // Load cache and installed packages in parallel
+            async let loadCache: () = viewModel.loadCache()
+            async let refreshIds: () = viewModel.refreshInstalledIds()
+            
+            _ = await (loadCache, refreshIds)
+        }
+        .errorAlert(error: $viewModel.appError)
+    }
+    
+    // MARK: - Search Bar
+    
+    private var searchBar: some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                
+                TextField("Search for packages...", text: $viewModel.searchQuery)
+                    .textFieldStyle(.plain)
+                    .onSubmit {
+                        Task {
+                            await viewModel.searchNow()
+                        }
+                    }
+                
+                if !viewModel.searchQuery.isEmpty {
+                    Button {
+                        viewModel.clearSearch()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(10)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            
+            // Type filter
+            if viewModel.hasResults {
+                Picker("Type", selection: $viewModel.selectedPackageType) {
+                    Text("All (\(viewModel.searchResults.count))")
+                        .tag(Optional<BrewPackage.PackageType>.none)
+                    Text("Formulas (\(viewModel.formulaCount))")
+                        .tag(Optional<BrewPackage.PackageType>.some(.formula))
+                    Text("Casks (\(viewModel.caskCount))")
+                        .tag(Optional<BrewPackage.PackageType>.some(.cask))
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 320)
+            }
+            
+            Button {
+                Task {
+                    await viewModel.searchNow()
+                }
+            } label: {
+                Text("Search")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(viewModel.searchQuery.isEmpty || !viewModel.isCacheLoaded)
+            
+            // Refresh button
+            Button {
+                Task {
+                    await viewModel.refreshCache()
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
+            .disabled(viewModel.isLoadingCache)
+            .help("Refresh package database")
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .onChange(of: viewModel.searchQuery) { _, _ in
+            guard viewModel.isCacheLoaded else { return }
+            Task {
+                await viewModel.search()
+            }
+        }
+    }
+    
+    // MARK: - Search Results
+    
+    private var searchResultsList: some View {
+        ScrollView {
+            LazyVStack(spacing: 1) {
+                ForEach(viewModel.filteredResults) { package in
+                    SearchResultRow(
+                        package: package,
+                        isInstalled: viewModel.isInstalled(package),
+                        onSelect: {
+                            selectedPackage = package
+                        },
+                        onInstall: {
+                            Task {
+                                await viewModel.installPackage(package)
+                            }
+                        }
+                    )
+                }
+            }
+            .padding(.vertical, 8)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+    
+    // MARK: - Initial State
+    
+    private var initialStateView: some View {
+        VStack(spacing: 24) {
+            if viewModel.isLoadingCache {
+                // Loading cache state
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    
+                    Text("Loading package database...")
+                        .font(.headline)
+                    
+                    Text("This may take a moment on first launch")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 56))
+                    .foregroundStyle(.tertiary)
+                
+                VStack(spacing: 8) {
+                    Text("Search Homebrew Packages")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("Find formulas (CLI tools) and casks (applications)")
+                        .foregroundStyle(.secondary)
+                }
+                
+                // Cache info
+                if viewModel.isCacheLoaded {
+                    HStack(spacing: 16) {
+                        Label("\(viewModel.formulaeCount) Formulae", systemImage: "terminal")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                        
+                        Label("\(viewModel.casksCount) Casks", systemImage: "macwindow")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                        
+                        Text("•")
+                            .foregroundStyle(.quaternary)
+                        
+                        Text("Updated \(viewModel.cacheAgeDescription)")
+                            .foregroundStyle(.tertiary)
+                            .font(.caption)
+                        
+                        Button {
+                            Task {
+                                await viewModel.refreshCache()
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .disabled(viewModel.isLoadingCache)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                }
+                
+                // Popular suggestions
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Popular packages:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    HStack(spacing: 8) {
+                        ForEach(["git", "node", "python", "visual-studio-code", "docker"], id: \.self) { suggestion in
+                            Button {
+                                viewModel.searchQuery = suggestion
+                                Task {
+                                    await viewModel.searchNow()
+                                }
+                            } label: {
+                                Text(suggestion)
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(!viewModel.isCacheLoaded)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    // MARK: - Empty State
+    
+    private var emptyStateView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+            
+            Text("No Results Found")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            Text("Try a different search term")
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    // MARK: - Searching View
+    
+    private var searchingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .scaleEffect(1.2)
+            
+            Text("Searching...")
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    // MARK: - Status Overlay
+    
+    @ViewBuilder
+    private var statusOverlay: some View {
+        if viewModel.operationStatus.isInProgress {
+            StatusBanner(
+                message: viewModel.operationStatus.message ?? "",
+                style: .info,
+                showProgress: true
+            )
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if case .success(let message) = viewModel.operationStatus {
+            StatusBanner(message: message, style: .success)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if case .failure(let message) = viewModel.operationStatus {
+            StatusBanner(message: message, style: .error) {
+                viewModel.clearOperationStatus()
+            }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+}
+
+// MARK: - Search Result Row
+
+struct SearchResultRow: View {
+    let package: BrewPackage
+    let isInstalled: Bool
+    let onSelect: () -> Void
+    let onInstall: () -> Void
+    
+    @State private var isHovering = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Package icon
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(package.type == .formula ?
+                          Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
+                    .frame(width: 40, height: 40)
+                
+                Image(systemName: package.type.iconName)
+                    .font(.title3)
+                    .foregroundStyle(package.type == .formula ? .blue : .purple)
+            }
+            
+            // Package info
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(package.name)
+                        .fontWeight(.medium)
+                    
+                    if isInstalled {
+                        Text("Installed")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.green)
+                    }
+                    
+                    Text(package.type.displayName)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            package.type == .formula ?
+                            Color.blue.opacity(0.1) : Color.purple.opacity(0.1),
+                            in: Capsule()
+                        )
+                        .foregroundStyle(package.type == .formula ? .blue : .purple)
+                    
+                    if let tap = package.displayTapName {
+                        Text(tap)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.1), in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                if let description = package.description, !description.isEmpty {
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            
+            Spacer()
+            
+            // Install button
+            if isHovering && !isInstalled {
+                Button {
+                    onInstall()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle")
+                        Text("Install")
+                    }
+                    .font(.caption)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
+            
+            // Chevron
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .background(isHovering ? Color.accentColor.opacity(0.08) : Color.clear)
+        .onTapGesture {
+            onSelect()
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
+    }
+}
+
+#Preview {
+    BrowsePackagesView(viewModel: BrowsePackagesViewModel())
+        .frame(width: 800, height: 600)
+}
