@@ -338,6 +338,36 @@ actor BrewService {
         progressHandler?("Successfully uninstalled \(package.name)")
     }
     
+    /// Force reinstalls a package
+    func reinstallPackage(_ package: BrewPackage, progressHandler: ((String) -> Void)? = nil) async throws {
+        guard let brewPath = await findBrewPath() else {
+            throw BrewServiceError.homebrewNotInstalled
+        }
+        
+        progressHandler?("Force reinstalling \(package.name)...")
+        print("[BrewService] Force reinstalling package: \(package.name)")
+        
+        var args = ["reinstall", "--force"]
+        if package.type == .cask {
+            args.append("--cask")
+        }
+        args.append(package.name)
+        
+        let result = try await runner.run(
+            command: brewPath,
+            arguments: args,
+            timeout: 600 // 10 minutes
+        )
+        
+        if !result.isSuccess {
+            print("[BrewService] Failed to reinstall package: \(result.errorOutput)")
+            throw BrewServiceError.reinstallFailed(package: package.name, message: result.errorOutput)
+        }
+        
+        progressHandler?("Successfully reinstalled \(package.name)")
+        print("[BrewService] Successfully reinstalled: \(package.name)")
+    }
+    
     // MARK: - Updates
     
     /// Updates Homebrew itself
@@ -931,6 +961,7 @@ enum BrewServiceError: LocalizedError, Sendable {
     case installationFailed(String)
     case installFailed(package: String, message: String)
     case uninstallFailed(package: String, message: String)
+    case reinstallFailed(package: String, message: String)
     case upgradeFailed(package: String, message: String)
     case packageNotFound(String)
     case tapFailed(tap: String, message: String)
@@ -950,6 +981,8 @@ enum BrewServiceError: LocalizedError, Sendable {
             return "Failed to install \(package): \(message)"
         case .uninstallFailed(let package, let message):
             return "Failed to uninstall \(package): \(message)"
+        case .reinstallFailed(let package, let message):
+            return "Failed to reinstall \(package): \(message)"
         case .upgradeFailed(let package, let message):
             return "Failed to upgrade \(package): \(message)"
         case .packageNotFound(let name):

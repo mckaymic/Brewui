@@ -41,6 +41,21 @@ struct UpdatesView: View {
                     Task {
                         await viewModel.updatePackage(package)
                     }
+                },
+                onPin: package.canBePinned && !package.isPinned ? {
+                    Task {
+                        await viewModel.pinPackage(package)
+                    }
+                } : nil,
+                onUnpin: package.isPinned ? {
+                    Task {
+                        await viewModel.unpinPackage(package)
+                    }
+                } : nil,
+                onReinstall: {
+                    Task {
+                        await viewModel.reinstallPackage(package)
+                    }
                 }
             )
         }

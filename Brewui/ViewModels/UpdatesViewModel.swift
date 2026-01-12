@@ -20,6 +20,7 @@ final class UpdatesViewModel {
     var isChecking: Bool = false
     var isUpdating: Bool = false
     var isPinning: Bool = false
+    var isReinstalling: Bool = false
     var error: String?
     var appError: AppError?
     var operationStatus: OperationStatus = .idle
@@ -342,6 +343,39 @@ final class UpdatesViewModel {
         }
         
         isPinning = false
+    }
+    
+    /// Force reinstalls a package
+    func reinstallPackage(_ package: BrewPackage) async {
+        guard !isReinstalling else { return }
+        
+        isReinstalling = true
+        appError = nil
+        operationStatus = .inProgress(message: "Reinstalling \(package.name)...")
+        
+        do {
+            try await brewService.reinstallPackage(package) { [weak self] message in
+                Task { @MainActor in
+                    self?.operationStatus = .inProgress(message: message)
+                }
+            }
+            
+            operationStatus = .success(message: "Successfully reinstalled \(package.name)")
+            
+            // Refresh to update the list
+            await checkForUpdates()
+            
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+        
+        isReinstalling = false
     }
     
     // MARK: - Selection Management

@@ -351,6 +351,34 @@ final class InstalledPackagesViewModel {
         }
     }
     
+    /// Force reinstalls a package
+    func reinstallPackage(_ package: BrewPackage) async {
+        operationStatus = .inProgress(message: "Reinstalling \(package.name)...")
+        appError = nil
+        
+        do {
+            try await brewService.reinstallPackage(package) { [weak self] message in
+                Task { @MainActor in
+                    self?.operationStatus = .inProgress(message: message)
+                }
+            }
+            
+            operationStatus = .success(message: "Successfully reinstalled \(package.name)")
+            
+            // Refresh to get updated package info
+            await syncWithBrew()
+            
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+    }
+    
     /// Clears any error state
     func clearError() {
         error = nil

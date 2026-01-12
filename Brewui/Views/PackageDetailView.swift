@@ -16,6 +16,7 @@ struct PackageDetailView: View {
     let onUpdate: (() -> Void)?
     let onPin: (() -> Void)?
     let onUnpin: (() -> Void)?
+    let onReinstall: (() -> Void)?
     
     @Environment(\.dismiss) private var dismiss
     @State private var isLoading = false
@@ -30,7 +31,8 @@ struct PackageDetailView: View {
         onUninstall: @escaping () -> Void = {},
         onUpdate: (() -> Void)? = nil,
         onPin: (() -> Void)? = nil,
-        onUnpin: (() -> Void)? = nil
+        onUnpin: (() -> Void)? = nil,
+        onReinstall: (() -> Void)? = nil
     ) {
         self.package = package
         self.isInstalled = isInstalled || package.isInstalled
@@ -39,6 +41,7 @@ struct PackageDetailView: View {
         self.onUpdate = onUpdate
         self.onPin = onPin
         self.onUnpin = onUnpin
+        self.onReinstall = onReinstall
     }
     
     private var displayPackage: BrewPackage {
@@ -189,6 +192,21 @@ struct PackageDetailView: View {
                             .buttonStyle(.bordered)
                             .help("Pin this package to prevent it from being updated")
                         }
+                    }
+                    
+                    // Force Reinstall button
+                    if let onReinstall = onReinstall {
+                        Button {
+                            onReinstall()
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise.circle")
+                                Text("Reinstall")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .help("Force reinstall this package")
                     }
                     
                     // Update button (only if outdated and not pinned)

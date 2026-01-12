@@ -78,6 +78,14 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 underlyingError: error
             )
             
+        case .reinstallFailed(let package, let message):
+            return AppError(
+                title: "Reinstall Failed",
+                message: "Failed to reinstall \(package).",
+                suggestion: parseBrewError(message),
+                underlyingError: error
+            )
+            
         case .upgradeFailed(let package, let message):
             return AppError(
                 title: "Upgrade Failed",

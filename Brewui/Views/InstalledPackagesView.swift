@@ -55,7 +55,12 @@ struct InstalledPackagesView: View {
                     Task {
                         await viewModel.unpinPackage(package)
                     }
-                } : nil
+                } : nil,
+                onReinstall: {
+                    Task {
+                        await viewModel.reinstallPackage(package)
+                    }
+                }
             )
         }
         .confirmationDialog(

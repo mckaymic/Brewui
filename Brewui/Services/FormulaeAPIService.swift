@@ -573,12 +573,27 @@ struct APICask: Codable, Sendable {
 // MARK: - Analytics Models
 
 /// Response from formulae analytics API
-private struct AnalyticsResponse: Codable, Sendable {
+private struct AnalyticsResponse: Sendable {
     let total_items: Int
     let start_date: String
     let end_date: String
     let total_count: Int
     let items: [AnalyticsItem]
+}
+
+extension AnalyticsResponse: Decodable {
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        total_items = try container.decode(Int.self, forKey: .total_items)
+        start_date = try container.decode(String.self, forKey: .start_date)
+        end_date = try container.decode(String.self, forKey: .end_date)
+        total_count = try container.decode(Int.self, forKey: .total_count)
+        items = try container.decode([AnalyticsItem].self, forKey: .items)
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case total_items, start_date, end_date, total_count, items
+    }
 }
 
 private struct AnalyticsItem: Codable, Sendable {
@@ -589,12 +604,27 @@ private struct AnalyticsItem: Codable, Sendable {
 }
 
 /// Response from cask analytics API
-private struct CaskAnalyticsResponse: Codable, Sendable {
+private struct CaskAnalyticsResponse: Sendable {
     let total_items: Int
     let start_date: String
     let end_date: String
     let total_count: Int
     let items: [CaskAnalyticsItem]
+}
+
+extension CaskAnalyticsResponse: Decodable {
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        total_items = try container.decode(Int.self, forKey: .total_items)
+        start_date = try container.decode(String.self, forKey: .start_date)
+        end_date = try container.decode(String.self, forKey: .end_date)
+        total_count = try container.decode(Int.self, forKey: .total_count)
+        items = try container.decode([CaskAnalyticsItem].self, forKey: .items)
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case total_items, start_date, end_date, total_count, items
+    }
 }
 
 private struct CaskAnalyticsItem: Codable, Sendable {
@@ -614,10 +644,30 @@ struct PopularPackage: Codable, Sendable, Identifiable {
 }
 
 /// Cache structure for analytics data
-private struct AnalyticsCache: Codable, Sendable {
+private struct AnalyticsCache: Sendable {
     let formulae: [PopularPackage]
     let casks: [PopularPackage]
     let cacheDate: Date
+}
+
+extension AnalyticsCache: Codable {
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        formulae = try container.decode([PopularPackage].self, forKey: .formulae)
+        casks = try container.decode([PopularPackage].self, forKey: .casks)
+        cacheDate = try container.decode(Date.self, forKey: .cacheDate)
+    }
+    
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(formulae, forKey: .formulae)
+        try container.encode(casks, forKey: .casks)
+        try container.encode(cacheDate, forKey: .cacheDate)
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case formulae, casks, cacheDate
+    }
 }
 
 // MARK: - Errors
