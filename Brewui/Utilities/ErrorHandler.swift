@@ -108,6 +108,22 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: parseBrewError(message),
                 underlyingError: error
             )
+            
+        case .pinFailed(let package, let message):
+            return AppError(
+                title: "Pin Failed",
+                message: "Failed to pin '\(package)'.",
+                suggestion: parseBrewError(message),
+                underlyingError: error
+            )
+            
+        case .unpinFailed(let package, let message):
+            return AppError(
+                title: "Unpin Failed",
+                message: "Failed to unpin '\(package)'.",
+                suggestion: parseBrewError(message),
+                underlyingError: error
+            )
         }
     }
     

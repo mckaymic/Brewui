@@ -16,8 +16,10 @@ final class UpdatesViewModel {
     // MARK: - Published Properties
     
     var outdatedPackages: [BrewPackage] = []
+    var pinnedPackages: [BrewPackage] = []
     var isChecking: Bool = false
     var isUpdating: Bool = false
+    var isPinning: Bool = false
     var error: String?
     var appError: AppError?
     var operationStatus: OperationStatus = .idle
@@ -26,20 +28,33 @@ final class UpdatesViewModel {
     
     // MARK: - Computed Properties
     
+    /// Non-pinned outdated packages that can be updated
+    var updatablePackages: [BrewPackage] {
+        outdatedPackages.filter { !$0.isPinned }
+    }
+    
     var hasUpdates: Bool {
-        !outdatedPackages.isEmpty
+        !updatablePackages.isEmpty
+    }
+    
+    var hasPinnedUpdates: Bool {
+        !pinnedPackages.isEmpty
     }
     
     var updateCount: Int {
-        outdatedPackages.count
+        updatablePackages.count
+    }
+    
+    var pinnedCount: Int {
+        pinnedPackages.count
     }
     
     var formulaUpdates: [BrewPackage] {
-        outdatedPackages.filter { $0.type == .formula }
+        updatablePackages.filter { $0.type == .formula }
     }
     
     var caskUpdates: [BrewPackage] {
-        outdatedPackages.filter { $0.type == .cask }
+        updatablePackages.filter { $0.type == .cask }
     }
     
     var selectedCount: Int {
@@ -47,7 +62,8 @@ final class UpdatesViewModel {
     }
     
     var allSelected: Bool {
-        selectedPackages.count == outdatedPackages.count && !outdatedPackages.isEmpty
+        let selectableCount = updatablePackages.count
+        return selectedPackages.count == selectableCount && selectableCount > 0
     }
     
     var lastCheckedString: String? {
@@ -83,13 +99,25 @@ final class UpdatesViewModel {
             
             // Then check for outdated packages
             operationStatus = .inProgress(message: "Checking for outdated packages...")
-            outdatedPackages = try await brewService.checkForOutdatedPackages()
+            let allOutdated = try await brewService.checkForOutdatedPackages()
+            
+            // Separate pinned packages from updatable ones
+            pinnedPackages = allOutdated.filter { $0.isPinned }
+            outdatedPackages = allOutdated
+            
             lastChecked = Date()
             
-            if outdatedPackages.isEmpty {
+            let updatableCount = updatablePackages.count
+            let pinnedCount = pinnedPackages.count
+            
+            if updatableCount == 0 && pinnedCount == 0 {
                 operationStatus = .success(message: "All packages are up to date")
+            } else if updatableCount == 0 && pinnedCount > 0 {
+                operationStatus = .success(message: "\(pinnedCount) pinned package(s) with updates available")
+            } else if pinnedCount > 0 {
+                operationStatus = .success(message: "Found \(updatableCount) update(s) available (\(pinnedCount) pinned)")
             } else {
-                operationStatus = .success(message: "Found \(outdatedPackages.count) update(s) available")
+                operationStatus = .success(message: "Found \(updatableCount) update(s) available")
             }
             
             // Clear status after delay
@@ -212,9 +240,116 @@ final class UpdatesViewModel {
         isUpdating = false
     }
     
+    // MARK: - Pinning
+    
+    /// Pins a package to prevent it from being updated
+    func pinPackage(_ package: BrewPackage) async {
+        guard !isPinning else { return }
+        guard package.canBePinned else {
+            operationStatus = .failure(message: "Only installed formulas can be pinned")
+            return
+        }
+        
+        isPinning = true
+        operationStatus = .inProgress(message: "Pinning \(package.name)...")
+        
+        do {
+            try await brewService.pinPackage(package)
+            
+            // Update local state - move package to pinned list
+            if let index = outdatedPackages.firstIndex(where: { $0.id == package.id }) {
+                var updatedPackage = outdatedPackages[index]
+                // Create a new package with isPinned = true
+                updatedPackage = BrewPackage(
+                    name: updatedPackage.name,
+                    fullName: updatedPackage.fullName,
+                    version: updatedPackage.version,
+                    installedVersion: updatedPackage.installedVersion,
+                    description: updatedPackage.description,
+                    homepage: updatedPackage.homepage,
+                    type: updatedPackage.type,
+                    isOutdated: updatedPackage.isOutdated,
+                    outdatedVersion: updatedPackage.outdatedVersion,
+                    isInstalledOnRequest: updatedPackage.isInstalledOnRequest,
+                    runtimeDependencies: updatedPackage.runtimeDependencies,
+                    usedBy: updatedPackage.usedBy,
+                    isPinned: true
+                )
+                outdatedPackages[index] = updatedPackage
+                pinnedPackages.append(updatedPackage)
+            }
+            selectedPackages.remove(package.id)
+            
+            operationStatus = .success(message: "Pinned \(package.name) - it won't be updated")
+            
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+        
+        isPinning = false
+    }
+    
+    /// Unpins a package to allow it to be updated again
+    func unpinPackage(_ package: BrewPackage) async {
+        guard !isPinning else { return }
+        
+        isPinning = true
+        operationStatus = .inProgress(message: "Unpinning \(package.name)...")
+        
+        do {
+            try await brewService.unpinPackage(package)
+            
+            // Update local state - move package from pinned list
+            pinnedPackages.removeAll { $0.id == package.id }
+            
+            if let index = outdatedPackages.firstIndex(where: { $0.id == package.id }) {
+                var updatedPackage = outdatedPackages[index]
+                // Create a new package with isPinned = false
+                updatedPackage = BrewPackage(
+                    name: updatedPackage.name,
+                    fullName: updatedPackage.fullName,
+                    version: updatedPackage.version,
+                    installedVersion: updatedPackage.installedVersion,
+                    description: updatedPackage.description,
+                    homepage: updatedPackage.homepage,
+                    type: updatedPackage.type,
+                    isOutdated: updatedPackage.isOutdated,
+                    outdatedVersion: updatedPackage.outdatedVersion,
+                    isInstalledOnRequest: updatedPackage.isInstalledOnRequest,
+                    runtimeDependencies: updatedPackage.runtimeDependencies,
+                    usedBy: updatedPackage.usedBy,
+                    isPinned: false
+                )
+                outdatedPackages[index] = updatedPackage
+            }
+            
+            operationStatus = .success(message: "Unpinned \(package.name) - it can now be updated")
+            
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+        
+        isPinning = false
+    }
+    
     // MARK: - Selection Management
     
     func toggleSelection(_ package: BrewPackage) {
+        // Don't allow selecting pinned packages
+        guard !package.isPinned else { return }
+        
         if selectedPackages.contains(package.id) {
             selectedPackages.remove(package.id)
         } else {
@@ -223,7 +358,8 @@ final class UpdatesViewModel {
     }
     
     func selectAll() {
-        selectedPackages = Set(outdatedPackages.map { $0.id })
+        // Only select non-pinned packages
+        selectedPackages = Set(updatablePackages.map { $0.id })
     }
     
     func deselectAll() {

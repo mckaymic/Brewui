@@ -32,6 +32,10 @@ final class BrowsePackagesViewModel {
     var cacheLastUpdated: Date?
     var isCacheLoaded: Bool = false
     
+    // Popular packages
+    var popularPackages: [PopularPackage] = []
+    var isLoadingPopular: Bool = false
+    
     // MARK: - Computed Properties
     
     var filteredResults: [BrewPackage] {
@@ -199,6 +203,21 @@ final class BrowsePackagesViewModel {
         formulaeCount = info.formulaeCount
         casksCount = info.casksCount
         cacheLastUpdated = info.formulaeDate ?? info.casksDate
+    }
+    
+    /// Loads popular packages from analytics
+    func loadPopularPackages() async {
+        guard !isLoadingPopular else { return }
+        isLoadingPopular = true
+        
+        do {
+            popularPackages = try await brewService.getPopularPackages(limit: 8)
+        } catch {
+            // Silently fail - popular packages are not critical
+            print("[BrowsePackagesVM] Failed to load popular packages: \(error)")
+        }
+        
+        isLoadingPopular = false
     }
     
     /// Returns a formatted string for when the cache was last updated

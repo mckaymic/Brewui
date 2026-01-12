@@ -140,6 +140,11 @@ final class InstalledPackagesViewModel {
         packages.filter { $0.isInstalledOnRequest == false && $0.type == .formula }.count
     }
     
+    /// Count of pinned packages
+    var pinnedCount: Int {
+        packages.filter { $0.isPinned }.count
+    }
+    
     // MARK: - Private
     
     private let brewService = BrewService.shared
@@ -241,6 +246,99 @@ final class InstalledPackagesViewModel {
             await cache.saveToDisk(packages)
             
             operationStatus = .success(message: "Successfully uninstalled \(package.name)")
+            
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+    }
+    
+    /// Pins a package to prevent it from being updated
+    func pinPackage(_ package: BrewPackage) async {
+        guard package.canBePinned else {
+            operationStatus = .failure(message: "Only installed formulas can be pinned")
+            return
+        }
+        
+        operationStatus = .inProgress(message: "Pinning \(package.name)...")
+        appError = nil
+        
+        do {
+            try await brewService.pinPackage(package)
+            
+            // Update local state
+            if let index = packages.firstIndex(where: { $0.id == package.id }) {
+                let updatedPackage = BrewPackage(
+                    name: packages[index].name,
+                    fullName: packages[index].fullName,
+                    version: packages[index].version,
+                    installedVersion: packages[index].installedVersion,
+                    description: packages[index].description,
+                    homepage: packages[index].homepage,
+                    type: packages[index].type,
+                    isOutdated: packages[index].isOutdated,
+                    outdatedVersion: packages[index].outdatedVersion,
+                    isInstalledOnRequest: packages[index].isInstalledOnRequest,
+                    runtimeDependencies: packages[index].runtimeDependencies,
+                    usedBy: packages[index].usedBy,
+                    isPinned: true
+                )
+                packages[index] = updatedPackage
+            }
+            
+            // Update cache with the new list
+            await cache.saveToDisk(packages)
+            
+            operationStatus = .success(message: "Pinned \(package.name) - it won't be updated")
+            
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+    }
+    
+    /// Unpins a package to allow it to be updated
+    func unpinPackage(_ package: BrewPackage) async {
+        operationStatus = .inProgress(message: "Unpinning \(package.name)...")
+        appError = nil
+        
+        do {
+            try await brewService.unpinPackage(package)
+            
+            // Update local state
+            if let index = packages.firstIndex(where: { $0.id == package.id }) {
+                let updatedPackage = BrewPackage(
+                    name: packages[index].name,
+                    fullName: packages[index].fullName,
+                    version: packages[index].version,
+                    installedVersion: packages[index].installedVersion,
+                    description: packages[index].description,
+                    homepage: packages[index].homepage,
+                    type: packages[index].type,
+                    isOutdated: packages[index].isOutdated,
+                    outdatedVersion: packages[index].outdatedVersion,
+                    isInstalledOnRequest: packages[index].isInstalledOnRequest,
+                    runtimeDependencies: packages[index].runtimeDependencies,
+                    usedBy: packages[index].usedBy,
+                    isPinned: false
+                )
+                packages[index] = updatedPackage
+            }
+            
+            // Update cache with the new list
+            await cache.saveToDisk(packages)
+            
+            operationStatus = .success(message: "Unpinned \(package.name) - it can now be updated")
             
             // Clear status after delay
             try? await Task.sleep(for: .seconds(3))

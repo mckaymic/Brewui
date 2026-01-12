@@ -45,7 +45,17 @@ struct InstalledPackagesView: View {
                 onUninstall: {
                     packageToUninstall = package
                     showingUninstallConfirmation = true
-                }
+                },
+                onPin: package.canBePinned && !package.isPinned ? {
+                    Task {
+                        await viewModel.pinPackage(package)
+                    }
+                } : nil,
+                onUnpin: package.isPinned ? {
+                    Task {
+                        await viewModel.unpinPackage(package)
+                    }
+                } : nil
             )
         }
         .confirmationDialog(
@@ -119,6 +129,12 @@ struct InstalledPackagesView: View {
                 Label("\(viewModel.dependencyCount) deps", systemImage: "link")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                
+                if viewModel.pinnedCount > 0 {
+                    Label("\(viewModel.pinnedCount) pinned", systemImage: "pin.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
             
             // Sync status indicator
@@ -320,7 +336,11 @@ struct ExpandablePackageRow: View {
                         Text(package.name)
                             .fontWeight(.medium)
                         
-                        if package.isOutdated {
+                        if package.isPinned {
+                            Image(systemName: "pin.fill")
+                                .foregroundStyle(.orange)
+                                .font(.caption)
+                        } else if package.isOutdated {
                             Image(systemName: "exclamationmark.circle.fill")
                                 .foregroundStyle(.orange)
                                 .font(.caption)
@@ -351,6 +371,16 @@ struct ExpandablePackageRow: View {
                                 in: Capsule()
                             )
                             .foregroundStyle(package.type == .formula ? .blue : .purple)
+                        
+                        // Pinned badge
+                        if package.isPinned {
+                            Text("Pinned")
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.1), in: Capsule())
+                                .foregroundStyle(.orange)
+                        }
                         
                         // Dependency count badge
                         if hasDependencies {
@@ -571,7 +601,11 @@ struct PackageRow: View {
                     Text(package.name)
                         .fontWeight(.medium)
                     
-                    if package.isOutdated {
+                    if package.isPinned {
+                        Image(systemName: "pin.fill")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                    } else if package.isOutdated {
                         Image(systemName: "exclamationmark.circle.fill")
                             .foregroundStyle(.orange)
                             .font(.caption)
@@ -602,6 +636,15 @@ struct PackageRow: View {
                             in: Capsule()
                         )
                         .foregroundStyle(package.type == .formula ? .blue : .purple)
+                    
+                    if package.isPinned {
+                        Text("Pinned")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.1), in: Capsule())
+                            .foregroundStyle(.orange)
+                    }
                     
                     if let tap = package.displayTapName {
                         Text(tap)

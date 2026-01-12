@@ -154,12 +154,12 @@ struct PackageListView: View {
                     packageSelectionList
                 }
             }
-            .frame(minWidth: 200)
+            .frame(minWidth: 400)
             .layoutPriority(1)
             
             // Right: Export options & preview
             exportOptionsPanel
-                .frame(minWidth: 200, idealWidth: 300)
+                .frame(width: 280)
         }
     }
     
@@ -514,12 +514,12 @@ struct PackageListView: View {
                 }
                 .background(Color(nsColor: .textBackgroundColor))
             }
-            .frame(minWidth: 200)
+            .frame(minWidth: 400)
             .layoutPriority(1)
             
             // Right: Install options
             installOptionsPanel(brewfile)
-                .frame(minWidth: 200, idealWidth: 300)
+                .frame(width: 280)
         }
     }
     

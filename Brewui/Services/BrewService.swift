@@ -235,6 +235,11 @@ actor BrewService {
         return (counts.formulae, counts.casks, dates.formulae, dates.casks)
     }
     
+    /// Gets popular packages based on Homebrew analytics
+    func getPopularPackages(limit: Int = 10) async throws -> [PopularPackage] {
+        try await formulaeAPI.getPopularPackages(limit: limit)
+    }
+    
     /// Gets detailed info for a specific package (from cache first, then CLI)
     func getPackageInfo(name: String, type: BrewPackage.PackageType) async throws -> BrewPackage? {
         // Try to get from cache first
@@ -449,6 +454,95 @@ actor BrewService {
         }
         
         progressHandler?("All packages upgraded successfully")
+    }
+    
+    // MARK: - Package Pinning
+    
+    /// Pins a formula to prevent it from being upgraded
+    /// Note: Only formulas can be pinned, not casks
+    func pinPackage(_ package: BrewPackage, progressHandler: ((String) -> Void)? = nil) async throws {
+        guard let brewPath = await findBrewPath() else {
+            throw BrewServiceError.homebrewNotInstalled
+        }
+        
+        guard package.type == .formula else {
+            throw BrewServiceError.pinFailed(package: package.name, message: "Only formulas can be pinned, not casks")
+        }
+        
+        progressHandler?("Pinning \(package.name)...")
+        print("[BrewService] Pinning package: \(package.name)")
+        
+        let result = try await runner.run(
+            command: brewPath,
+            arguments: ["pin", package.name],
+            timeout: 30
+        )
+        
+        if !result.isSuccess {
+            print("[BrewService] Failed to pin package: \(result.errorOutput)")
+            throw BrewServiceError.pinFailed(package: package.name, message: result.errorOutput)
+        }
+        
+        progressHandler?("Successfully pinned \(package.name)")
+        print("[BrewService] Successfully pinned: \(package.name)")
+    }
+    
+    /// Unpins a formula to allow it to be upgraded again
+    func unpinPackage(_ package: BrewPackage, progressHandler: ((String) -> Void)? = nil) async throws {
+        guard let brewPath = await findBrewPath() else {
+            throw BrewServiceError.homebrewNotInstalled
+        }
+        
+        guard package.type == .formula else {
+            throw BrewServiceError.unpinFailed(package: package.name, message: "Only formulas can be unpinned")
+        }
+        
+        progressHandler?("Unpinning \(package.name)...")
+        print("[BrewService] Unpinning package: \(package.name)")
+        
+        let result = try await runner.run(
+            command: brewPath,
+            arguments: ["unpin", package.name],
+            timeout: 30
+        )
+        
+        if !result.isSuccess {
+            print("[BrewService] Failed to unpin package: \(result.errorOutput)")
+            throw BrewServiceError.unpinFailed(package: package.name, message: result.errorOutput)
+        }
+        
+        progressHandler?("Successfully unpinned \(package.name)")
+        print("[BrewService] Successfully unpinned: \(package.name)")
+    }
+    
+    /// Gets the list of pinned formula names
+    func getPinnedPackages() async throws -> Set<String> {
+        guard let brewPath = await findBrewPath() else {
+            throw BrewServiceError.homebrewNotInstalled
+        }
+        
+        print("[BrewService] Getting pinned packages")
+        
+        let result = try await runner.run(
+            command: brewPath,
+            arguments: ["list", "--pinned"],
+            timeout: 30
+        )
+        
+        // brew list --pinned returns empty output if no packages are pinned
+        // It only fails for actual errors
+        if !result.isSuccess && !result.errorOutput.isEmpty {
+            print("[BrewService] Failed to get pinned packages: \(result.errorOutput)")
+            throw BrewServiceError.commandFailed(result.errorOutput)
+        }
+        
+        let pinnedNames = result.output
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        
+        print("[BrewService] Found \(pinnedNames.count) pinned packages")
+        return Set(pinnedNames)
     }
     
     // MARK: - Cleanup
@@ -841,6 +935,8 @@ enum BrewServiceError: LocalizedError, Sendable {
     case packageNotFound(String)
     case tapFailed(tap: String, message: String)
     case untapFailed(tap: String, message: String)
+    case pinFailed(package: String, message: String)
+    case unpinFailed(package: String, message: String)
     
     nonisolated var errorDescription: String? {
         switch self {
@@ -862,6 +958,10 @@ enum BrewServiceError: LocalizedError, Sendable {
             return "Failed to add tap \(tap): \(message)"
         case .untapFailed(let tap, let message):
             return "Failed to remove tap \(tap): \(message)"
+        case .pinFailed(let package, let message):
+            return "Failed to pin \(package): \(message)"
+        case .unpinFailed(let package, let message):
+            return "Failed to unpin \(package): \(message)"
         }
     }
 }

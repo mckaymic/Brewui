@@ -17,6 +17,8 @@ actor FormulaeAPIService {
     
     private let formulaeURL = URL(string: "https://formulae.brew.sh/api/formula.json")!
     private let casksURL = URL(string: "https://formulae.brew.sh/api/cask.json")!
+    private let formulaeAnalyticsURL = URL(string: "https://formulae.brew.sh/api/analytics/install/30d.json")!
+    private let casksAnalyticsURL = URL(string: "https://formulae.brew.sh/api/analytics/cask-install/30d.json")!
     
     // MARK: - Cache Configuration
     
@@ -31,6 +33,12 @@ actor FormulaeAPIService {
     private var casksCacheDate: Date?
     private var isLoadingFormulae = false
     private var isLoadingCasks = false
+    
+    // Analytics cache (popular packages)
+    private var popularFormulaeCache: [PopularPackage] = []
+    private var popularCasksCache: [PopularPackage] = []
+    private var analyticsCacheDate: Date?
+    private var isLoadingAnalytics = false
     
     // MARK: - File Paths
     
@@ -54,6 +62,10 @@ actor FormulaeAPIService {
     
     private var metadataCachePath: URL {
         cacheDirectory.appendingPathComponent("metadata.json")
+    }
+    
+    private var analyticsCachePath: URL {
+        cacheDirectory.appendingPathComponent("analytics.json")
     }
     
     private init() {}
@@ -177,6 +189,46 @@ actor FormulaeAPIService {
         return casksCache.map { $0.toBrewPackage() }
     }
     
+    /// Gets popular packages from analytics (mix of formulae and casks)
+    func getPopularPackages(limit: Int = 10) async throws -> [PopularPackage] {
+        try await loadAnalyticsIfNeeded()
+        
+        // Interleave formulae and casks for variety
+        var result: [PopularPackage] = []
+        let formulaeLimit = limit / 2 + limit % 2
+        let casksLimit = limit / 2
+        
+        let topFormulae = Array(popularFormulaeCache.prefix(formulaeLimit))
+        let topCasks = Array(popularCasksCache.prefix(casksLimit))
+        
+        // Alternate between formulae and casks
+        var fIdx = 0, cIdx = 0
+        while result.count < limit && (fIdx < topFormulae.count || cIdx < topCasks.count) {
+            if fIdx < topFormulae.count {
+                result.append(topFormulae[fIdx])
+                fIdx += 1
+            }
+            if cIdx < topCasks.count && result.count < limit {
+                result.append(topCasks[cIdx])
+                cIdx += 1
+            }
+        }
+        
+        return result
+    }
+    
+    /// Gets top formulae by install count
+    func getPopularFormulae(limit: Int = 10) async throws -> [PopularPackage] {
+        try await loadAnalyticsIfNeeded()
+        return Array(popularFormulaeCache.prefix(limit))
+    }
+    
+    /// Gets top casks by install count
+    func getPopularCasks(limit: Int = 10) async throws -> [PopularPackage] {
+        try await loadAnalyticsIfNeeded()
+        return Array(popularCasksCache.prefix(limit))
+    }
+    
     // MARK: - Cache Loading
     
     private func loadFormulaeIfNeeded() async throws {
@@ -257,6 +309,72 @@ actor FormulaeAPIService {
         saveCasksToDisk()
     }
     
+    private func loadAnalyticsIfNeeded() async throws {
+        // Check if already loaded and fresh
+        if !popularFormulaeCache.isEmpty,
+           let cacheDate = analyticsCacheDate,
+           Date().timeIntervalSince(cacheDate) < cacheExpiration {
+            return
+        }
+        
+        // Prevent concurrent loads
+        guard !isLoadingAnalytics else { return }
+        isLoadingAnalytics = true
+        defer { isLoadingAnalytics = false }
+        
+        // Try loading from disk first
+        if let (analytics, date) = loadAnalyticsFromDisk() {
+            popularFormulaeCache = analytics.formulae
+            popularCasksCache = analytics.casks
+            analyticsCacheDate = date
+            
+            // If disk cache is fresh, use it
+            if Date().timeIntervalSince(date) < cacheExpiration {
+                print("[FormulaeAPI] Loaded analytics from disk cache")
+                return
+            }
+        }
+        
+        // Fetch from API (both endpoints in parallel)
+        print("[FormulaeAPI] Fetching analytics from API...")
+        
+        async let formulaeData = URLSession.shared.data(from: formulaeAnalyticsURL)
+        async let casksData = URLSession.shared.data(from: casksAnalyticsURL)
+        
+        let decoder = JSONDecoder()
+        
+        do {
+            let (fData, _) = try await formulaeData
+            let formulaeAnalytics = try decoder.decode(AnalyticsResponse.self, from: fData)
+            popularFormulaeCache = formulaeAnalytics.items.map { item in
+                PopularPackage(name: item.formula, installCount: item.count, type: .formula)
+            }
+        } catch {
+            print("[FormulaeAPI] Failed to fetch formulae analytics: \(error)")
+            // Use empty array if fetch fails
+            popularFormulaeCache = []
+        }
+        
+        do {
+            let (cData, _) = try await casksData
+            let casksAnalytics = try decoder.decode(CaskAnalyticsResponse.self, from: cData)
+            popularCasksCache = casksAnalytics.items.map { item in
+                PopularPackage(name: item.cask, installCount: item.count, type: .cask)
+            }
+        } catch {
+            print("[FormulaeAPI] Failed to fetch cask analytics: \(error)")
+            // Use empty array if fetch fails
+            popularCasksCache = []
+        }
+        
+        analyticsCacheDate = Date()
+        
+        print("[FormulaeAPI] Fetched \(popularFormulaeCache.count) popular formulae, \(popularCasksCache.count) popular casks")
+        
+        // Save to disk
+        saveAnalyticsToDisk()
+    }
+    
     // MARK: - Disk Cache
     
     private func loadFormulaeFromDisk() -> ([APIFormula], Date)? {
@@ -316,6 +434,37 @@ actor FormulaeAPIService {
             print("[FormulaeAPI] Saved \(casksCache.count) casks to disk")
         } catch {
             print("[FormulaeAPI] Failed to save casks to disk: \(error)")
+        }
+    }
+    
+    private func loadAnalyticsFromDisk() -> (AnalyticsCache, Date)? {
+        guard FileManager.default.fileExists(atPath: analyticsCachePath.path) else {
+            return nil
+        }
+        
+        do {
+            let data = try Data(contentsOf: analyticsCachePath)
+            let analytics = try JSONDecoder().decode(AnalyticsCache.self, from: data)
+            return (analytics, analytics.cacheDate)
+        } catch {
+            print("[FormulaeAPI] Failed to load analytics from disk: \(error)")
+            return nil
+        }
+    }
+    
+    private func saveAnalyticsToDisk() {
+        let analytics = AnalyticsCache(
+            formulae: popularFormulaeCache,
+            casks: popularCasksCache,
+            cacheDate: analyticsCacheDate ?? Date()
+        )
+        
+        do {
+            let data = try JSONEncoder().encode(analytics)
+            try data.write(to: analyticsCachePath)
+            print("[FormulaeAPI] Saved analytics to disk")
+        } catch {
+            print("[FormulaeAPI] Failed to save analytics to disk: \(error)")
         }
     }
     
@@ -419,6 +568,56 @@ struct APICask: Codable, Sendable {
             type: .cask
         )
     }
+}
+
+// MARK: - Analytics Models
+
+/// Response from formulae analytics API
+private struct AnalyticsResponse: Codable, Sendable {
+    let total_items: Int
+    let start_date: String
+    let end_date: String
+    let total_count: Int
+    let items: [AnalyticsItem]
+}
+
+private struct AnalyticsItem: Codable, Sendable {
+    let number: Int
+    let formula: String
+    let count: String
+    let percent: String
+}
+
+/// Response from cask analytics API
+private struct CaskAnalyticsResponse: Codable, Sendable {
+    let total_items: Int
+    let start_date: String
+    let end_date: String
+    let total_count: Int
+    let items: [CaskAnalyticsItem]
+}
+
+private struct CaskAnalyticsItem: Codable, Sendable {
+    let number: Int
+    let cask: String
+    let count: String
+    let percent: String
+}
+
+/// Public model for popular packages
+struct PopularPackage: Codable, Sendable, Identifiable {
+    let name: String
+    let installCount: String
+    let type: BrewPackage.PackageType
+    
+    var id: String { "\(type.rawValue)-\(name)" }
+}
+
+/// Cache structure for analytics data
+private struct AnalyticsCache: Codable, Sendable {
+    let formulae: [PopularPackage]
+    let casks: [PopularPackage]
+    let cacheDate: Date
 }
 
 // MARK: - Errors

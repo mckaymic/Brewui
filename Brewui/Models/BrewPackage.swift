@@ -25,6 +25,8 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
     let runtimeDependencies: [String]?
     /// Names of packages that depend on this package (reverse dependencies)
     let usedBy: [String]?
+    /// Whether the package is pinned to prevent updates (only applicable to formulas)
+    let isPinned: Bool
     
     enum PackageType: String, Codable, CaseIterable, Sendable {
         case formula
@@ -57,7 +59,8 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
         outdatedVersion: String? = nil,
         isInstalledOnRequest: Bool? = nil,
         runtimeDependencies: [String]? = nil,
-        usedBy: [String]? = nil
+        usedBy: [String]? = nil,
+        isPinned: Bool = false
     ) {
         self.id = "\(type.rawValue)-\(name)"
         self.name = name
@@ -72,6 +75,7 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
         self.isInstalledOnRequest = isInstalledOnRequest
         self.runtimeDependencies = runtimeDependencies
         self.usedBy = usedBy
+        self.isPinned = isPinned
     }
     
     nonisolated var displayVersion: String {
@@ -80,6 +84,11 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
     
     nonisolated var isInstalled: Bool {
         installedVersion != nil
+    }
+    
+    /// Whether the package supports pinning (only formulas can be pinned)
+    nonisolated var canBePinned: Bool {
+        type == .formula && isInstalled
     }
     
     /// Returns the tap name (e.g., "homebrew/core", "homebrew/cask", or "user/tap")
@@ -172,6 +181,9 @@ extension BrewPackage {
         // Check if outdated
         let isOutdated = json["outdated"] as? Bool ?? false
         
+        // Check if pinned (only available for formulas)
+        let isPinned = json["pinned"] as? Bool ?? false
+        
         return BrewPackage(
             name: name,
             fullName: fullName,
@@ -182,7 +194,8 @@ extension BrewPackage {
             type: .formula,
             isOutdated: isOutdated,
             isInstalledOnRequest: isInstalledOnRequest,
-            runtimeDependencies: runtimeDependencies
+            runtimeDependencies: runtimeDependencies,
+            isPinned: isPinned
         )
     }
     

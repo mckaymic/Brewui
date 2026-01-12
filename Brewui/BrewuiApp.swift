@@ -30,18 +30,6 @@ struct BrewuiApp: App {
                 }
             }
             
-            CommandGroup(after: .appInfo) {
-                Divider()
-                
-                Button("Check for Updates...") {
-                    NotificationCenter.default.post(
-                        name: .checkForUpdates,
-                        object: nil
-                    )
-                }
-                .keyboardShortcut("U", modifiers: [.command, .shift])
-            }
-            
             CommandGroup(replacing: .newItem) {
                 // Remove new window command
             }
@@ -71,7 +59,6 @@ struct BrewuiApp: App {
 // MARK: - Notification Names
 
 extension Notification.Name {
-    static let checkForUpdates = Notification.Name("checkForUpdates")
     static let refreshPackages = Notification.Name("refreshPackages")
     static let exportBundle = Notification.Name("exportBundle")
     static let importBundle = Notification.Name("importBundle")

@@ -188,7 +188,7 @@ struct ContentView: View {
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         .safeAreaInset(edge: .top) {
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 10) {
                 Image("SidebarLogo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -196,7 +196,6 @@ struct ContentView: View {
                 Text("Brewui")
                     .font(.title2)
                     .fontWeight(.semibold)
-                    .baselineOffset(-1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)

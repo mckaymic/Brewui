@@ -45,11 +45,12 @@ struct BrowsePackagesView: View {
             statusOverlay
         }
         .task {
-            // Load cache and installed packages in parallel
+            // Load cache, installed packages, and popular packages in parallel
             async let loadCache: () = viewModel.loadCache()
             async let refreshIds: () = viewModel.refreshInstalledIds()
+            async let loadPopular: () = viewModel.loadPopularPackages()
             
-            _ = await (loadCache, refreshIds)
+            _ = await (loadCache, refreshIds, loadPopular)
         }
         .errorAlert(error: $viewModel.appError)
     }
@@ -226,20 +227,53 @@ struct BrowsePackagesView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     
-                    HStack(spacing: 8) {
-                        ForEach(["git", "node", "python", "visual-studio-code", "docker"], id: \.self) { suggestion in
-                            Button {
-                                viewModel.searchQuery = suggestion
-                                Task {
-                                    await viewModel.searchNow()
+                    if viewModel.isLoadingPopular {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                            Text("Loading popular packages...")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    } else if viewModel.popularPackages.isEmpty {
+                        // Fallback to hardcoded suggestions if analytics fails
+                        HStack(spacing: 8) {
+                            ForEach(["git", "node", "python", "visual-studio-code", "docker"], id: \.self) { suggestion in
+                                Button {
+                                    viewModel.searchQuery = suggestion
+                                    Task {
+                                        await viewModel.searchNow()
+                                    }
+                                } label: {
+                                    Text(suggestion)
+                                        .font(.caption)
                                 }
-                            } label: {
-                                Text(suggestion)
-                                    .font(.caption)
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(!viewModel.isCacheLoaded)
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(!viewModel.isCacheLoaded)
+                        }
+                    } else {
+                        // Dynamic popular packages from analytics
+                        HStack(spacing: 8) {
+                            ForEach(viewModel.popularPackages) { package in
+                                Button {
+                                    viewModel.searchQuery = package.name
+                                    Task {
+                                        await viewModel.searchNow()
+                                    }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: package.type == .formula ? "terminal" : "macwindow")
+                                            .font(.caption2)
+                                        Text(package.name)
+                                            .font(.caption)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(!viewModel.isCacheLoaded)
+                            }
                         }
                     }
                 }

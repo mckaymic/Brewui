@@ -22,7 +22,7 @@ struct UpdatesView: View {
             // Content
             if viewModel.isChecking && viewModel.outdatedPackages.isEmpty {
                 checkingView
-            } else if viewModel.outdatedPackages.isEmpty {
+            } else if viewModel.outdatedPackages.isEmpty && viewModel.pinnedPackages.isEmpty {
                 upToDateView
             } else {
                 updatesList
@@ -57,7 +57,18 @@ struct UpdatesView: View {
             // Status text
             VStack(alignment: .leading, spacing: 2) {
                 if viewModel.hasUpdates {
-                    Text("\(viewModel.updateCount) update\(viewModel.updateCount == 1 ? "" : "s") available")
+                    HStack(spacing: 8) {
+                        Text("\(viewModel.updateCount) update\(viewModel.updateCount == 1 ? "" : "s") available")
+                            .font(.headline)
+                        
+                        if viewModel.hasPinnedUpdates {
+                            Text("(\(viewModel.pinnedCount) pinned)")
+                                .font(.caption)
+                                .foregroundStyle(Color.orange)
+                        }
+                    }
+                } else if viewModel.hasPinnedUpdates {
+                    Text("\(viewModel.pinnedCount) pinned package\(viewModel.pinnedCount == 1 ? "" : "s") with updates")
                         .font(.headline)
                 } else {
                     Text("All packages up to date")
@@ -154,6 +165,7 @@ struct UpdatesView: View {
                             package: package,
                             isSelected: viewModel.isSelected(package),
                             isUpdating: viewModel.isUpdating,
+                            isPinning: viewModel.isPinning,
                             onToggleSelect: {
                                 viewModel.toggleSelection(package)
                             },
@@ -164,7 +176,13 @@ struct UpdatesView: View {
                                 Task {
                                     await viewModel.updatePackage(package)
                                 }
-                            }
+                            },
+                            onPin: {
+                                Task {
+                                    await viewModel.pinPackage(package)
+                                }
+                            },
+                            onUnpin: nil
                         )
                     }
                 }
@@ -182,6 +200,7 @@ struct UpdatesView: View {
                             package: package,
                             isSelected: viewModel.isSelected(package),
                             isUpdating: viewModel.isUpdating,
+                            isPinning: viewModel.isPinning,
                             onToggleSelect: {
                                 viewModel.toggleSelection(package)
                             },
@@ -191,6 +210,37 @@ struct UpdatesView: View {
                             onUpdate: {
                                 Task {
                                     await viewModel.updatePackage(package)
+                                }
+                            },
+                            onPin: nil, // Casks can't be pinned
+                            onUnpin: nil
+                        )
+                    }
+                }
+                
+                // Pinned packages section
+                if viewModel.hasPinnedUpdates {
+                    SectionHeader(
+                        title: "Pinned (Updates Held)",
+                        count: viewModel.pinnedCount,
+                        icon: "pin.fill"
+                    )
+                    
+                    ForEach(viewModel.pinnedPackages) { package in
+                        UpdateRow(
+                            package: package,
+                            isSelected: false,
+                            isUpdating: viewModel.isUpdating,
+                            isPinning: viewModel.isPinning,
+                            onToggleSelect: { },
+                            onSelect: {
+                                selectedPackage = package
+                            },
+                            onUpdate: nil,
+                            onPin: nil,
+                            onUnpin: {
+                                Task {
+                                    await viewModel.unpinPackage(package)
                                 }
                             }
                         )
@@ -306,24 +356,41 @@ struct UpdateRow: View {
     let package: BrewPackage
     let isSelected: Bool
     let isUpdating: Bool
+    let isPinning: Bool
     let onToggleSelect: () -> Void
     let onSelect: () -> Void
-    let onUpdate: () -> Void
+    let onUpdate: (() -> Void)?
+    let onPin: (() -> Void)?
+    let onUnpin: (() -> Void)?
     
     @State private var isHovering = false
     
+    private var isPinned: Bool {
+        package.isPinned
+    }
+    
+    private var canBePinned: Bool {
+        package.canBePinned && !isPinned
+    }
+    
     var body: some View {
         HStack(spacing: 12) {
-            // Checkbox
-            Button {
-                onToggleSelect()
-            } label: {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            // Checkbox or pin icon
+            if isPinned {
+                Image(systemName: "pin.fill")
                     .font(.title3)
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(Color.orange)
+            } else {
+                Button {
+                    onToggleSelect()
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(isUpdating || isPinning)
             }
-            .buttonStyle(.plain)
-            .disabled(isUpdating)
             
             // Package icon
             ZStack {
@@ -339,8 +406,19 @@ struct UpdateRow: View {
             
             // Package info
             VStack(alignment: .leading, spacing: 4) {
-                Text(package.name)
-                    .fontWeight(.medium)
+                HStack(spacing: 6) {
+                    Text(package.name)
+                        .fontWeight(.medium)
+                    
+                    if isPinned {
+                        Text("Pinned")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color.orange)
+                    }
+                }
                 
                 HStack(spacing: 8) {
                     if let installedVersion = package.installedVersion {
@@ -351,32 +429,66 @@ struct UpdateRow: View {
                     
                     Image(systemName: "arrow.right")
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(isPinned ? Color.secondary : Color.orange)
                     
                     Text(package.outdatedVersion ?? package.version)
                         .font(.caption)
                         .fontWeight(.medium)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(isPinned ? Color.secondary : Color.orange)
                 }
             }
             
             Spacer()
             
-            // Update button
-            if isHovering && !isUpdating {
-                Button {
-                    onUpdate()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                        Text("Update")
+            // Action buttons (visible on hover)
+            if isHovering && !isUpdating && !isPinning {
+                HStack(spacing: 8) {
+                    // Pin/Unpin button
+                    if let onUnpin = onUnpin, isPinned {
+                        Button {
+                            onUnpin()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pin.slash")
+                                Text("Unpin")
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    } else if let onPin = onPin, canBePinned {
+                        Button {
+                            onPin()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pin")
+                                Text("Pin")
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     }
-                    .font(.caption)
+                    
+                    // Update button (only for non-pinned packages)
+                    if let onUpdate = onUpdate, !isPinned {
+                        Button {
+                            onUpdate()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                Text("Update")
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                        .controlSize(.small)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
-                .controlSize(.small)
-                .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
             
             // Chevron

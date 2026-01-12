@@ -14,6 +14,8 @@ struct PackageDetailView: View {
     let onInstall: () -> Void
     let onUninstall: () -> Void
     let onUpdate: (() -> Void)?
+    let onPin: (() -> Void)?
+    let onUnpin: (() -> Void)?
     
     @Environment(\.dismiss) private var dismiss
     @State private var isLoading = false
@@ -26,13 +28,17 @@ struct PackageDetailView: View {
         isInstalled: Bool = false,
         onInstall: @escaping () -> Void = {},
         onUninstall: @escaping () -> Void = {},
-        onUpdate: (() -> Void)? = nil
+        onUpdate: (() -> Void)? = nil,
+        onPin: (() -> Void)? = nil,
+        onUnpin: (() -> Void)? = nil
     ) {
         self.package = package
         self.isInstalled = isInstalled || package.isInstalled
         self.onInstall = onInstall
         self.onUninstall = onUninstall
         self.onUpdate = onUpdate
+        self.onPin = onPin
+        self.onUnpin = onUnpin
     }
     
     private var displayPackage: BrewPackage {
@@ -86,7 +92,7 @@ struct PackageDetailView: View {
                                         Text(installed)
                                             .fontWeight(.medium)
                                         
-                                        if displayPackage.isOutdated {
+                                        if displayPackage.isOutdated && !displayPackage.isPinned {
                                             Image(systemName: "exclamationmark.circle.fill")
                                                 .foregroundStyle(.orange)
                                                 .font(.caption)
@@ -103,6 +109,20 @@ struct PackageDetailView: View {
                                         .foregroundStyle(displayPackage.type == .formula ? .blue : .purple)
                                     Text(displayPackage.type.displayName)
                                         .fontWeight(.medium)
+                                }
+                            }
+                            
+                            if displayPackage.isPinned {
+                                GridRow {
+                                    Text("Status")
+                                        .foregroundStyle(.secondary)
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "pin.fill")
+                                            .foregroundStyle(.orange)
+                                        Text("Pinned at current version")
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(.orange)
+                                    }
                                 }
                             }
                         }
@@ -143,7 +163,36 @@ struct PackageDetailView: View {
                 Spacer()
                 
                 if isInstalled || displayPackage.isInstalled {
-                    if displayPackage.isOutdated, let onUpdate = onUpdate {
+                    // Pin/Unpin button (only for formulas)
+                    if displayPackage.canBePinned || displayPackage.isPinned {
+                        if displayPackage.isPinned, let onUnpin = onUnpin {
+                            Button {
+                                onUnpin()
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "pin.slash")
+                                    Text("Unpin")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        } else if let onPin = onPin {
+                            Button {
+                                onPin()
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "pin")
+                                    Text("Pin Version")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .help("Pin this package to prevent it from being updated")
+                        }
+                    }
+                    
+                    // Update button (only if outdated and not pinned)
+                    if displayPackage.isOutdated && !displayPackage.isPinned, let onUpdate = onUpdate {
                         Button {
                             onUpdate()
                             dismiss()
@@ -233,7 +282,20 @@ struct PackageDetailView: View {
                             .foregroundStyle(.green)
                     }
                     
-                    if displayPackage.isOutdated {
+                    if displayPackage.isPinned {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pin.fill")
+                                .font(.caption2)
+                            Text("Pinned")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.orange)
+                    }
+                    
+                    if displayPackage.isOutdated && !displayPackage.isPinned {
                         Text("Update Available")
                             .font(.caption)
                             .padding(.horizontal, 8)
