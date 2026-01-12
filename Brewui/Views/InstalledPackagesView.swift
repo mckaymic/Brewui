@@ -46,6 +46,11 @@ struct InstalledPackagesView: View {
                     packageToUninstall = package
                     showingUninstallConfirmation = true
                 },
+                onUpdate: package.isOutdated && !package.isPinned ? {
+                    Task {
+                        await viewModel.updatePackage(package)
+                    }
+                } : nil,
                 onPin: package.canBePinned && !package.isPinned ? {
                     Task {
                         await viewModel.pinPackage(package)
@@ -79,8 +84,8 @@ struct InstalledPackagesView: View {
         } message: {
             Text("This will remove the package from your system.")
         }
-        .overlay(alignment: .bottom) {
-            statusOverlay
+        .statusOverlay(status: viewModel.operationStatus) {
+            viewModel.clearOperationStatus()
         }
         .errorAlert(error: $viewModel.appError)
     }
@@ -270,27 +275,6 @@ struct InstalledPackagesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
-    // MARK: - Status Overlay
-    
-    @ViewBuilder
-    private var statusOverlay: some View {
-        if viewModel.operationStatus.isInProgress {
-            StatusBanner(
-                message: viewModel.operationStatus.message ?? "",
-                style: .info,
-                showProgress: true
-            )
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .success(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .success)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .failure(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .error) {
-                viewModel.clearOperationStatus()
-            }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
 }
 
 // MARK: - Expandable Package Row
@@ -323,111 +307,21 @@ struct ExpandablePackageRow: View {
             
             // Main content area - taps here open details
             HStack(spacing: 12) {
-                // Package icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(package.type == .formula ?
-                              Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-                        .frame(width: 40, height: 40)
-                    
-                    Image(systemName: package.type.iconName)
-                        .font(.title3)
-                        .foregroundStyle(package.type == .formula ? .blue : .purple)
-                }
+                PackageIcon(type: package.type)
                 
-                // Package info
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(package.name)
-                            .fontWeight(.medium)
-                        
-                        if package.isPinned {
-                            Image(systemName: "pin.fill")
-                                .foregroundStyle(.orange)
-                                .font(.caption)
-                        } else if package.isOutdated {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .foregroundStyle(.orange)
-                                .font(.caption)
-                        }
-                    }
-                    
-                    if let description = package.description, !description.isEmpty {
-                        Text(description)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    
-                    HStack(spacing: 8) {
-                        if let version = package.installedVersion ?? (package.version.isEmpty ? nil : package.version) {
-                            Text("v\(version)")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                        
-                        Text(package.type.displayName)
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                package.type == .formula ?
-                                Color.blue.opacity(0.1) : Color.purple.opacity(0.1),
-                                in: Capsule()
-                            )
-                            .foregroundStyle(package.type == .formula ? .blue : .purple)
-                        
-                        // Pinned badge
-                        if package.isPinned {
-                            Text("Pinned")
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.orange.opacity(0.1), in: Capsule())
-                                .foregroundStyle(.orange)
-                        }
-                        
-                        // Dependency count badge
-                        if hasDependencies {
-                            HStack(spacing: 3) {
-                                Image(systemName: "link")
-                                    .font(.caption2)
-                                Text("\(dependencyCount)")
-                            }
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.1), in: Capsule())
-                            .foregroundStyle(.orange)
-                        }
-                        
-                        if let tap = package.displayTapName {
-                            Text(tap)
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.secondary.opacity(0.1), in: Capsule())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                PackageInfoView(
+                    package: package,
+                    showDependencyCount: hasDependencies,
+                    dependencyCount: dependencyCount
+                )
                 
                 Spacer()
                 
                 // Action button (visible on hover)
                 if isHovering {
-                    Button(role: .destructive) {
+                    RowActionButton(label: "Uninstall", icon: "trash", style: .destructive) {
                         onUninstall()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                            Text("Uninstall")
-                        }
-                        .font(.caption)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 }
                 
                 // Chevron for details
@@ -485,16 +379,7 @@ struct DependencyRow: View {
             }
             .frame(width: indentWidth + connectorLength + 4)
             
-            // Package icon (smaller for dependencies)
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.orange.opacity(0.1))
-                    .frame(width: 32, height: 32)
-                
-                Image(systemName: "link")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
+            DependencyIcon()
             
             // Package info
             VStack(alignment: .leading, spacing: 2) {
@@ -575,109 +460,27 @@ struct PackageRow: View {
     enum ActionStyle {
         case primary
         case destructive
-        
-        var color: Color {
-            switch self {
-            case .primary: return Color.accentColor
-            case .destructive: return Color.red
-            }
-        }
     }
     
     @State private var isHovering = false
     
     var body: some View {
         HStack(spacing: 12) {
-            // Package icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(package.type == .formula ?
-                          Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-                    .frame(width: 40, height: 40)
-                
-                Image(systemName: package.type.iconName)
-                    .font(.title3)
-                    .foregroundStyle(package.type == .formula ? .blue : .purple)
-            }
+            PackageIcon(type: package.type)
             
-            // Package info
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(package.name)
-                        .fontWeight(.medium)
-                    
-                    if package.isPinned {
-                        Image(systemName: "pin.fill")
-                            .foregroundStyle(.orange)
-                            .font(.caption)
-                    } else if package.isOutdated {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(.orange)
-                            .font(.caption)
-                    }
-                }
-                
-                if let description = package.description, !description.isEmpty {
-                    Text(description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                
-                HStack(spacing: 8) {
-                    if let version = package.installedVersion ?? (package.version.isEmpty ? nil : package.version) {
-                        Text("v\(version)")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    
-                    Text(package.type.displayName)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            package.type == .formula ?
-                            Color.blue.opacity(0.1) : Color.purple.opacity(0.1),
-                            in: Capsule()
-                        )
-                        .foregroundStyle(package.type == .formula ? .blue : .purple)
-                    
-                    if package.isPinned {
-                        Text("Pinned")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.1), in: Capsule())
-                            .foregroundStyle(.orange)
-                    }
-                    
-                    if let tap = package.displayTapName {
-                        Text(tap)
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.1), in: Capsule())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+            PackageInfoView(package: package)
             
             Spacer()
             
             // Action button (visible on hover)
             if isHovering {
-                Button(role: actionStyle == .destructive ? .destructive : nil) {
+                RowActionButton(
+                    label: actionLabel,
+                    icon: actionIcon,
+                    style: actionStyle == .destructive ? .destructive : .standard
+                ) {
                     onAction()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: actionIcon)
-                        Text(actionLabel)
-                    }
-                    .font(.caption)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
             
             // Chevron

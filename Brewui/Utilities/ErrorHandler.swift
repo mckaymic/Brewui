@@ -288,6 +288,45 @@ extension View {
     }
 }
 
+// MARK: - Status Overlay Modifier
+
+/// A view modifier that displays a status banner overlay based on operation status
+struct StatusOverlayModifier: ViewModifier {
+    let status: OperationStatus
+    var onDismiss: (() -> Void)?
+    
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
+            statusOverlay
+                .animation(.easeInOut(duration: 0.2), value: status)
+        }
+    }
+    
+    @ViewBuilder
+    private var statusOverlay: some View {
+        switch status {
+        case .idle:
+            EmptyView()
+        case .inProgress(let message):
+            StatusBanner(message: message, style: .info, showProgress: true)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        case .success(let message):
+            StatusBanner(message: message, style: .success)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        case .failure(let message):
+            StatusBanner(message: message, style: .error, onDismiss: onDismiss)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+}
+
+extension View {
+    /// Adds a status overlay banner to the view based on operation status
+    func statusOverlay(status: OperationStatus, onDismiss: (() -> Void)? = nil) -> some View {
+        modifier(StatusOverlayModifier(status: status, onDismiss: onDismiss))
+    }
+}
+
 // MARK: - Error Toast/Banner
 
 struct ErrorBanner: View {

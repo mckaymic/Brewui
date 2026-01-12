@@ -27,6 +27,8 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
     let usedBy: [String]?
     /// Whether the package is pinned to prevent updates (only applicable to formulas)
     let isPinned: Bool
+    /// Whether the cask handles its own updates (only applicable to casks)
+    let autoUpdates: Bool
     
     enum PackageType: String, Codable, CaseIterable, Sendable {
         case formula
@@ -60,7 +62,8 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
         isInstalledOnRequest: Bool? = nil,
         runtimeDependencies: [String]? = nil,
         usedBy: [String]? = nil,
-        isPinned: Bool = false
+        isPinned: Bool = false,
+        autoUpdates: Bool = false
     ) {
         self.id = "\(type.rawValue)-\(name)"
         self.name = name
@@ -76,6 +79,7 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
         self.runtimeDependencies = runtimeDependencies
         self.usedBy = usedBy
         self.isPinned = isPinned
+        self.autoUpdates = autoUpdates
     }
     
     nonisolated var displayVersion: String {
@@ -136,6 +140,46 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
         }
         
         return tap
+    }
+}
+
+// MARK: - Copy Helper
+
+extension BrewPackage {
+    /// Creates a copy of the package with optionally modified properties
+    /// Use double-optional (e.g., `String??`) to distinguish between "not provided" and "set to nil"
+    nonisolated func copy(
+        name: String? = nil,
+        fullName: String? = nil,
+        version: String? = nil,
+        installedVersion: String?? = .none,
+        description: String?? = .none,
+        homepage: String?? = .none,
+        type: PackageType? = nil,
+        isOutdated: Bool? = nil,
+        outdatedVersion: String?? = .none,
+        isInstalledOnRequest: Bool?? = .none,
+        runtimeDependencies: [String]?? = .none,
+        usedBy: [String]?? = .none,
+        isPinned: Bool? = nil,
+        autoUpdates: Bool? = nil
+    ) -> BrewPackage {
+        BrewPackage(
+            name: name ?? self.name,
+            fullName: fullName ?? self.fullName,
+            version: version ?? self.version,
+            installedVersion: installedVersion ?? self.installedVersion,
+            description: description ?? self.description,
+            homepage: homepage ?? self.homepage,
+            type: type ?? self.type,
+            isOutdated: isOutdated ?? self.isOutdated,
+            outdatedVersion: outdatedVersion ?? self.outdatedVersion,
+            isInstalledOnRequest: isInstalledOnRequest ?? self.isInstalledOnRequest,
+            runtimeDependencies: runtimeDependencies ?? self.runtimeDependencies,
+            usedBy: usedBy ?? self.usedBy,
+            isPinned: isPinned ?? self.isPinned,
+            autoUpdates: autoUpdates ?? self.autoUpdates
+        )
     }
 }
 
@@ -208,6 +252,16 @@ extension BrewPackage {
         let desc = json["desc"] as? String
         let homepage = json["homepage"] as? String
         let version = json["version"] as? String ?? ""
+        let tap = json["tap"] as? String
+        
+        // For third-party casks, include the tap in fullName so tapName property can extract it
+        // Standard homebrew/cask doesn't need to be included
+        let fullName: String
+        if let tap = tap, tap != "homebrew/cask" {
+            fullName = "\(tap)/\(token)"
+        } else {
+            fullName = displayName
+        }
         
         // Check if installed
         var installedVersion: String?
@@ -216,16 +270,18 @@ extension BrewPackage {
         }
         
         let isOutdated = json["outdated"] as? Bool ?? false
+        let autoUpdates = json["auto_updates"] as? Bool ?? false
         
         return BrewPackage(
             name: token,
-            fullName: displayName,
+            fullName: fullName,
             version: version,
             installedVersion: installedVersion,
             description: desc,
             homepage: homepage,
             type: .cask,
-            isOutdated: isOutdated
+            isOutdated: isOutdated,
+            autoUpdates: autoUpdates
         )
     }
 }

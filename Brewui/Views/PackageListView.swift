@@ -96,8 +96,8 @@ struct PackageListView: View {
         .sheet(isPresented: $showingPreview) {
             previewSheet
         }
-        .overlay(alignment: .bottom) {
-            statusOverlay
+        .statusOverlay(status: viewModel.operationStatus) {
+            viewModel.clearOperationStatus()
         }
         .errorAlert(error: $viewModel.appError)
     }
@@ -803,31 +803,6 @@ struct PackageListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
-    @ViewBuilder
-    private var statusOverlay: some View {
-        if viewModel.operationStatus.isInProgress {
-            StatusBanner(
-                message: viewModel.operationStatus.message ?? "",
-                style: .info,
-                showProgress: true
-            )
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .success(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .success)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .onAppear {
-                    Task {
-                        try? await Task.sleep(for: .seconds(3))
-                        viewModel.clearOperationStatus()
-                    }
-                }
-        } else if case .failure(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .error) {
-                viewModel.clearOperationStatus()
-            }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
 }
 
 // MARK: - Selectable Package Row
@@ -846,17 +821,7 @@ struct SelectablePackageRow: View {
                 .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                 .font(.title3)
             
-            // Package icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(package.type == .formula ?
-                          Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                
-                Image(systemName: package.type.iconName)
-                    .font(.caption)
-                    .foregroundStyle(package.type == .formula ? .blue : .purple)
-            }
+            PackageIcon(type: package.type, size: .small)
             
             // Package info
             VStack(alignment: .leading, spacing: 2) {
@@ -880,17 +845,7 @@ struct SelectablePackageRow: View {
                     .foregroundStyle(.tertiary)
             }
             
-            // Type badge
-            Text(package.type.displayName)
-                .font(.caption2)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    package.type == .formula ?
-                    Color.blue.opacity(0.1) : Color.purple.opacity(0.1),
-                    in: Capsule()
-                )
-                .foregroundStyle(package.type == .formula ? .blue : .purple)
+            PackageTypeBadge(type: package.type)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -916,19 +871,8 @@ struct ImportPackageRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Package icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(type == .formula ?
-                          Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                
-                Image(systemName: type.iconName)
-                    .font(.caption)
-                    .foregroundStyle(type == .formula ? .blue : .purple)
-            }
+            PackageIcon(type: type, size: .small)
             
-            // Package name
             Text(name)
                 .fontWeight(.medium)
             

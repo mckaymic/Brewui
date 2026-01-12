@@ -129,6 +129,22 @@ struct PackageDetailView: View {
                                 }
                             }
                         }
+                        
+                        // Explanation for auto-updating casks with version mismatch
+                        if displayPackage.autoUpdates,
+                           let installed = displayPackage.installedVersion,
+                           !displayPackage.version.isEmpty,
+                           installed != displayPackage.version {
+                            HStack(spacing: 8) {
+                                Image(systemName: "info.circle")
+                                    .foregroundStyle(.cyan)
+                                Text("This app updates itself. The installed version shown is what Homebrew recorded at install time — the actual app version may be newer.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(10)
+                            .background(Color.cyan.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                     
                     // Homepage link
@@ -313,6 +329,19 @@ struct PackageDetailView: View {
                         .foregroundStyle(.orange)
                     }
                     
+                    if displayPackage.autoUpdates {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption2)
+                            Text("Auto-updates")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.cyan.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.cyan)
+                    }
+                    
                     if displayPackage.isOutdated && !displayPackage.isPinned {
                         Text("Update Available")
                             .font(.caption)
@@ -340,10 +369,23 @@ struct PackageDetailView: View {
         
         isLoading = true
         
-        detailedPackage = try? await brewService.getPackageInfo(
+        if let fetchedDetails = try? await brewService.getPackageInfo(
             name: package.name,
             type: package.type
-        )
+        ) {
+            // Merge fetched details with original package's installation status
+            // The API cache doesn't have installation-specific fields like isOutdated, installedVersion, isPinned, autoUpdates
+            detailedPackage = fetchedDetails.copy(
+                installedVersion: .some(package.installedVersion),
+                isOutdated: package.isOutdated,
+                outdatedVersion: .some(package.outdatedVersion),
+                isInstalledOnRequest: .some(package.isInstalledOnRequest),
+                runtimeDependencies: .some(package.runtimeDependencies),
+                usedBy: .some(package.usedBy),
+                isPinned: package.isPinned,
+                autoUpdates: package.autoUpdates
+            )
+        }
         
         isLoading = false
     }

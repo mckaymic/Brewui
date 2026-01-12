@@ -557,6 +557,7 @@ struct APICask: Codable, Sendable {
     let version: String?
     let deprecated: Bool?
     let disabled: Bool?
+    let auto_updates: Bool?
     
     nonisolated func toBrewPackage() -> BrewPackage {
         BrewPackage(
@@ -565,7 +566,8 @@ struct APICask: Codable, Sendable {
             version: version ?? "",
             description: desc,
             homepage: homepage,
-            type: .cask
+            type: .cask,
+            autoUpdates: auto_updates ?? false
         )
     }
 }

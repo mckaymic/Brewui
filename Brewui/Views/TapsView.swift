@@ -56,8 +56,8 @@ struct TapsView: View {
         } message: {
             Text("This will remove the tap and its formulas may become unavailable.")
         }
-        .overlay(alignment: .bottom) {
-            statusOverlay
+        .statusOverlay(status: viewModel.operationStatus) {
+            viewModel.clearOperationStatus()
         }
         .errorAlert(error: $viewModel.appError)
     }
@@ -322,27 +322,6 @@ struct TapsView: View {
         .frame(width: 400, height: 380)
     }
     
-    // MARK: - Status Overlay
-    
-    @ViewBuilder
-    private var statusOverlay: some View {
-        if viewModel.operationStatus.isInProgress {
-            StatusBanner(
-                message: viewModel.operationStatus.message ?? "",
-                style: .info,
-                showProgress: true
-            )
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .success(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .success)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .failure(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .error) {
-                viewModel.clearOperationStatus()
-            }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
 }
 
 // MARK: - Tap Row

@@ -89,7 +89,19 @@ struct Brewfile: Codable, Sendable {
     
     /// Creates a Brewfile from a list of BrewPackages
     nonisolated init(from packages: [BrewPackage], metadata: Metadata? = nil) {
-        self.taps = []
+        // Extract unique third-party taps from packages
+        // Standard taps (homebrew/core, homebrew/cask) don't need to be declared
+        let standardTaps: Set<String> = ["homebrew/core", "homebrew/cask"]
+        var tapSet = Set<String>()
+        
+        for package in packages {
+            if let tap = package.tapName, !standardTaps.contains(tap) {
+                tapSet.insert(tap)
+            }
+        }
+        
+        self.taps = Array(tapSet).sorted()
+        
         self.formulas = packages
             .filter { $0.type == .formula }
             .map { FormulaEntry(name: $0.fullName) }

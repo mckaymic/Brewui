@@ -259,23 +259,7 @@ final class UpdatesViewModel {
             
             // Update local state - move package to pinned list
             if let index = outdatedPackages.firstIndex(where: { $0.id == package.id }) {
-                var updatedPackage = outdatedPackages[index]
-                // Create a new package with isPinned = true
-                updatedPackage = BrewPackage(
-                    name: updatedPackage.name,
-                    fullName: updatedPackage.fullName,
-                    version: updatedPackage.version,
-                    installedVersion: updatedPackage.installedVersion,
-                    description: updatedPackage.description,
-                    homepage: updatedPackage.homepage,
-                    type: updatedPackage.type,
-                    isOutdated: updatedPackage.isOutdated,
-                    outdatedVersion: updatedPackage.outdatedVersion,
-                    isInstalledOnRequest: updatedPackage.isInstalledOnRequest,
-                    runtimeDependencies: updatedPackage.runtimeDependencies,
-                    usedBy: updatedPackage.usedBy,
-                    isPinned: true
-                )
+                let updatedPackage = outdatedPackages[index].copy(isPinned: true)
                 outdatedPackages[index] = updatedPackage
                 pinnedPackages.append(updatedPackage)
             }
@@ -310,24 +294,7 @@ final class UpdatesViewModel {
             pinnedPackages.removeAll { $0.id == package.id }
             
             if let index = outdatedPackages.firstIndex(where: { $0.id == package.id }) {
-                var updatedPackage = outdatedPackages[index]
-                // Create a new package with isPinned = false
-                updatedPackage = BrewPackage(
-                    name: updatedPackage.name,
-                    fullName: updatedPackage.fullName,
-                    version: updatedPackage.version,
-                    installedVersion: updatedPackage.installedVersion,
-                    description: updatedPackage.description,
-                    homepage: updatedPackage.homepage,
-                    type: updatedPackage.type,
-                    isOutdated: updatedPackage.isOutdated,
-                    outdatedVersion: updatedPackage.outdatedVersion,
-                    isInstalledOnRequest: updatedPackage.isInstalledOnRequest,
-                    runtimeDependencies: updatedPackage.runtimeDependencies,
-                    usedBy: updatedPackage.usedBy,
-                    isPinned: false
-                )
-                outdatedPackages[index] = updatedPackage
+                outdatedPackages[index] = outdatedPackages[index].copy(isPinned: false)
             }
             
             operationStatus = .success(message: "Unpinned \(package.name) - it can now be updated")

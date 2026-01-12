@@ -59,8 +59,8 @@ struct UpdatesView: View {
                 }
             )
         }
-        .overlay(alignment: .bottom) {
-            statusOverlay
+        .statusOverlay(status: viewModel.operationStatus) {
+            viewModel.clearOperationStatus()
         }
         .errorAlert(error: $viewModel.appError)
     }
@@ -315,27 +315,6 @@ struct UpdatesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
-    // MARK: - Status Overlay
-    
-    @ViewBuilder
-    private var statusOverlay: some View {
-        if viewModel.operationStatus.isInProgress {
-            StatusBanner(
-                message: viewModel.operationStatus.message ?? "",
-                style: .info,
-                showProgress: true
-            )
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .success(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .success)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .failure(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .error) {
-                viewModel.clearOperationStatus()
-            }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
 }
 
 // MARK: - Section Header
@@ -407,34 +386,20 @@ struct UpdateRow: View {
                 .disabled(isUpdating || isPinning)
             }
             
-            // Package icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(package.type == .formula ?
-                          Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-                    .frame(width: 40, height: 40)
-                
-                Image(systemName: package.type.iconName)
-                    .font(.title3)
-                    .foregroundStyle(package.type == .formula ? .blue : .purple)
-            }
+            PackageIcon(type: package.type)
             
-            // Package info
+            // Package info with version arrow
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(package.name)
                         .fontWeight(.medium)
                     
                     if isPinned {
-                        Text("Pinned")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.15), in: Capsule())
-                            .foregroundStyle(Color.orange)
+                        PinnedBadge()
                     }
                 }
                 
+                // Version transition
                 HStack(spacing: 8) {
                     if let installedVersion = package.installedVersion {
                         Text(installedVersion)
@@ -460,48 +425,20 @@ struct UpdateRow: View {
                 HStack(spacing: 8) {
                     // Pin/Unpin button
                     if let onUnpin = onUnpin, isPinned {
-                        Button {
+                        RowActionButton(label: "Unpin", icon: "pin.slash") {
                             onUnpin()
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "pin.slash")
-                                Text("Unpin")
-                            }
-                            .font(.caption)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     } else if let onPin = onPin, canBePinned {
-                        Button {
+                        RowActionButton(label: "Pin", icon: "pin") {
                             onPin()
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "pin")
-                                Text("Pin")
-                            }
-                            .font(.caption)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     }
                     
                     // Update button (only for non-pinned packages)
                     if let onUpdate = onUpdate, !isPinned {
-                        Button {
+                        PrimaryRowActionButton(label: "Update", icon: "arrow.triangle.2.circlepath", tint: .orange) {
                             onUpdate()
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                                Text("Update")
-                            }
-                            .font(.caption)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.orange)
-                        .controlSize(.small)
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     }
                 }
             }

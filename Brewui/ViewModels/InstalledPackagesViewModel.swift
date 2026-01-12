@@ -15,7 +15,12 @@ final class InstalledPackagesViewModel {
     
     // MARK: - Published Properties
     
-    var packages: [BrewPackage] = []
+    var packages: [BrewPackage] = [] {
+        didSet {
+            // Invalidate cache when packages change
+            _packagesByNameCache = nil
+        }
+    }
     var searchText: String = ""
     var isLoading: Bool = false
     var isSyncing: Bool = false
@@ -28,9 +33,17 @@ final class InstalledPackagesViewModel {
     
     // MARK: - Computed Properties
     
-    /// Dictionary for quick lookup of packages by name
+    /// Cached dictionary for quick lookup of packages by name
+    private var _packagesByNameCache: [String: BrewPackage]?
+    
+    /// Dictionary for quick lookup of packages by name (cached for performance)
     private var packagesByName: [String: BrewPackage] {
-        Dictionary(packages.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        if let cache = _packagesByNameCache {
+            return cache
+        }
+        let cache = Dictionary(packages.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        _packagesByNameCache = cache
+        return cache
     }
     
     /// Top-level packages (explicitly installed by user) - these are the main items in the list
@@ -273,22 +286,7 @@ final class InstalledPackagesViewModel {
             
             // Update local state
             if let index = packages.firstIndex(where: { $0.id == package.id }) {
-                let updatedPackage = BrewPackage(
-                    name: packages[index].name,
-                    fullName: packages[index].fullName,
-                    version: packages[index].version,
-                    installedVersion: packages[index].installedVersion,
-                    description: packages[index].description,
-                    homepage: packages[index].homepage,
-                    type: packages[index].type,
-                    isOutdated: packages[index].isOutdated,
-                    outdatedVersion: packages[index].outdatedVersion,
-                    isInstalledOnRequest: packages[index].isInstalledOnRequest,
-                    runtimeDependencies: packages[index].runtimeDependencies,
-                    usedBy: packages[index].usedBy,
-                    isPinned: true
-                )
-                packages[index] = updatedPackage
+                packages[index] = packages[index].copy(isPinned: true)
             }
             
             // Update cache with the new list
@@ -317,28 +315,41 @@ final class InstalledPackagesViewModel {
             
             // Update local state
             if let index = packages.firstIndex(where: { $0.id == package.id }) {
-                let updatedPackage = BrewPackage(
-                    name: packages[index].name,
-                    fullName: packages[index].fullName,
-                    version: packages[index].version,
-                    installedVersion: packages[index].installedVersion,
-                    description: packages[index].description,
-                    homepage: packages[index].homepage,
-                    type: packages[index].type,
-                    isOutdated: packages[index].isOutdated,
-                    outdatedVersion: packages[index].outdatedVersion,
-                    isInstalledOnRequest: packages[index].isInstalledOnRequest,
-                    runtimeDependencies: packages[index].runtimeDependencies,
-                    usedBy: packages[index].usedBy,
-                    isPinned: false
-                )
-                packages[index] = updatedPackage
+                packages[index] = packages[index].copy(isPinned: false)
             }
             
             // Update cache with the new list
             await cache.saveToDisk(packages)
             
             operationStatus = .success(message: "Unpinned \(package.name) - it can now be updated")
+            
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+    }
+    
+    /// Updates a package to the latest version
+    func updatePackage(_ package: BrewPackage) async {
+        operationStatus = .inProgress(message: "Updating \(package.name)...")
+        appError = nil
+        
+        do {
+            try await brewService.upgradePackage(package) { [weak self] message in
+                Task { @MainActor in
+                    self?.operationStatus = .inProgress(message: message)
+                }
+            }
+            
+            operationStatus = .success(message: "Successfully updated \(package.name)")
+            
+            // Refresh to get updated package info
+            await syncWithBrew()
             
             // Clear status after delay
             try? await Task.sleep(for: .seconds(3))

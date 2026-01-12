@@ -41,8 +41,8 @@ struct BrowsePackagesView: View {
                 }
             )
         }
-        .overlay(alignment: .bottom) {
-            statusOverlay
+        .statusOverlay(status: viewModel.operationStatus) {
+            viewModel.clearOperationStatus()
         }
         .task {
             // Load cache, installed packages, and popular packages in parallel
@@ -313,27 +313,6 @@ struct BrowsePackagesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
-    // MARK: - Status Overlay
-    
-    @ViewBuilder
-    private var statusOverlay: some View {
-        if viewModel.operationStatus.isInProgress {
-            StatusBanner(
-                message: viewModel.operationStatus.message ?? "",
-                style: .info,
-                showProgress: true
-            )
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .success(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .success)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if case .failure(let message) = viewModel.operationStatus {
-            StatusBanner(message: message, style: .error) {
-                viewModel.clearOperationStatus()
-            }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
 }
 
 // MARK: - Search Result Row
@@ -348,78 +327,21 @@ struct SearchResultRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Package icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(package.type == .formula ?
-                          Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-                    .frame(width: 40, height: 40)
-                
-                Image(systemName: package.type.iconName)
-                    .font(.title3)
-                    .foregroundStyle(package.type == .formula ? .blue : .purple)
-            }
+            PackageIcon(type: package.type)
             
-            // Package info
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(package.name)
-                        .fontWeight(.medium)
-                    
-                    if isInstalled {
-                        Text("Installed")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.green.opacity(0.15), in: Capsule())
-                            .foregroundStyle(.green)
-                    }
-                    
-                    Text(package.type.displayName)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            package.type == .formula ?
-                            Color.blue.opacity(0.1) : Color.purple.opacity(0.1),
-                            in: Capsule()
-                        )
-                        .foregroundStyle(package.type == .formula ? .blue : .purple)
-                    
-                    if let tap = package.displayTapName {
-                        Text(tap)
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.1), in: Capsule())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                
-                if let description = package.description, !description.isEmpty {
-                    Text(description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
+            PackageInfoView(
+                package: package,
+                showInstallStatus: true,
+                isInstalled: isInstalled
+            )
             
             Spacer()
             
             // Install button
             if isHovering && !isInstalled {
-                Button {
+                PrimaryRowActionButton(label: "Install", icon: "arrow.down.circle") {
                     onInstall()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down.circle")
-                        Text("Install")
-                    }
-                    .font(.caption)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
             
             // Chevron

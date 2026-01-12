@@ -51,7 +51,6 @@ struct ContentView: View {
     @State private var homebrewStatus: HomebrewStatus = .checking
     @State private var selectedDestination: NavigationDestination = .installed
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
-    @State private var isRefreshingAll: Bool = false
     
     // View Models (shared across views)
     @State private var installedViewModel = InstalledPackagesViewModel()
@@ -61,11 +60,6 @@ struct ContentView: View {
     @State private var packageListViewModel = PackageListViewModel()
     
     private let brewService = BrewService.shared
-    
-    /// Returns true if any refresh operation is in progress
-    private var isRefreshing: Bool {
-        isRefreshingAll || installedViewModel.isSyncing || browseViewModel.isLoadingCache || updatesViewModel.isChecking || tapsViewModel.isLoading
-    }
     
     var body: some View {
         Group {
@@ -109,11 +103,6 @@ struct ContentView: View {
             detailView
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                toolbarItems
-            }
-        }
     }
     
     // MARK: - Sidebar
@@ -230,66 +219,7 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Toolbar Items
-    
-    @ViewBuilder
-    private var toolbarItems: some View {
-        // Export/Import button
-        Button {
-            selectedDestination = .bundles
-        } label: {
-            Image(systemName: "list.bullet.rectangle")
-        }
-        .help("Export & Import Bundles")
-        
-        // Update indicator
-        if updatesViewModel.hasUpdates {
-            Button {
-                selectedDestination = .updates
-            } label: {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                    
-                    Text("\(updatesViewModel.updateCount)")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(3)
-                        .background(.orange, in: Circle())
-                        .offset(x: 6, y: -6)
-                }
-            }
-            .help("Updates available")
-        }
-        
-        // Refresh all data button
-        Button {
-            Task {
-                await refreshAllData()
-            }
-        } label: {
-            Image(systemName: "arrow.clockwise")
-        }
-        .help("Refresh all data")
-        .disabled(isRefreshing)
-    }
-    
     // MARK: - Helper Methods
-    
-    /// Refreshes all data: installed packages, browse cache, updates, and taps
-    private func refreshAllData() async {
-        isRefreshingAll = true
-        
-        // Run all refresh operations in parallel
-        async let installedRefresh: () = installedViewModel.refresh()
-        async let browseRefresh: () = browseViewModel.refreshCache()
-        async let updatesRefresh: () = updatesViewModel.checkForUpdates()
-        async let tapsRefresh: () = tapsViewModel.refresh()
-        
-        // Wait for all to complete
-        _ = await (installedRefresh, browseRefresh, updatesRefresh, tapsRefresh)
-        
-        isRefreshingAll = false
-    }
     
     private func checkHomebrew() async {
         print("[ContentView] Checking for Homebrew...")
