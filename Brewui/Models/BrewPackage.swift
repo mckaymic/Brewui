@@ -19,6 +19,12 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
     let type: PackageType
     let isOutdated: Bool
     let outdatedVersion: String?
+    /// Whether the package was explicitly installed by the user (true) or installed as a dependency (false)
+    let isInstalledOnRequest: Bool?
+    /// Names of packages that this package uses as runtime dependencies
+    let runtimeDependencies: [String]?
+    /// Names of packages that depend on this package (reverse dependencies)
+    let usedBy: [String]?
     
     enum PackageType: String, Codable, CaseIterable, Sendable {
         case formula
@@ -48,7 +54,10 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
         homepage: String? = nil,
         type: PackageType = .formula,
         isOutdated: Bool = false,
-        outdatedVersion: String? = nil
+        outdatedVersion: String? = nil,
+        isInstalledOnRequest: Bool? = nil,
+        runtimeDependencies: [String]? = nil,
+        usedBy: [String]? = nil
     ) {
         self.id = "\(type.rawValue)-\(name)"
         self.name = name
@@ -60,6 +69,9 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
         self.type = type
         self.isOutdated = isOutdated
         self.outdatedVersion = outdatedVersion
+        self.isInstalledOnRequest = isInstalledOnRequest
+        self.runtimeDependencies = runtimeDependencies
+        self.usedBy = usedBy
     }
     
     nonisolated var displayVersion: String {
@@ -132,6 +144,8 @@ extension BrewPackage {
         // Get version info
         var version = ""
         var installedVersion: String?
+        var isInstalledOnRequest: Bool?
+        var runtimeDependencies: [String]?
         
         if let versions = json["versions"] as? [String: Any] {
             version = versions["stable"] as? String ?? ""
@@ -139,6 +153,20 @@ extension BrewPackage {
         
         if let installed = json["installed"] as? [[String: Any]], let first = installed.first {
             installedVersion = first["version"] as? String
+            // Extract whether this package was explicitly installed by the user
+            isInstalledOnRequest = first["installed_on_request"] as? Bool
+            
+            // Extract runtime dependencies
+            if let deps = first["runtime_dependencies"] as? [[String: Any]] {
+                runtimeDependencies = deps.compactMap { dep -> String? in
+                    // Try full_name first, then fall back to name
+                    if let depFullName = dep["full_name"] as? String {
+                        // Extract just the package name (last component)
+                        return depFullName.split(separator: "/").last.map(String.init) ?? depFullName
+                    }
+                    return nil
+                }
+            }
         }
         
         // Check if outdated
@@ -152,7 +180,9 @@ extension BrewPackage {
             description: desc,
             homepage: homepage,
             type: .formula,
-            isOutdated: isOutdated
+            isOutdated: isOutdated,
+            isInstalledOnRequest: isInstalledOnRequest,
+            runtimeDependencies: runtimeDependencies
         )
     }
     

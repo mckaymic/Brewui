@@ -23,10 +23,80 @@ final class InstalledPackagesViewModel {
     var appError: AppError?
     var operationStatus: OperationStatus = .idle
     var selectedPackageType: BrewPackage.PackageType?
+    var expandedPackages: Set<String> = []
     var lastSyncDescription: String = "never"
     
     // MARK: - Computed Properties
     
+    /// Dictionary for quick lookup of packages by name
+    private var packagesByName: [String: BrewPackage] {
+        Dictionary(packages.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+    
+    /// Top-level packages (explicitly installed by user) - these are the main items in the list
+    var topLevelPackages: [BrewPackage] {
+        var filtered = packages.filter { package in
+            // Include packages that were explicitly installed (formulas with isInstalledOnRequest == true)
+            // All casks are considered top-level since they don't have the dependency concept
+            package.type == .cask || package.isInstalledOnRequest == true
+        }
+        
+        // Filter by type if selected
+        if let type = selectedPackageType {
+            filtered = filtered.filter { $0.type == type }
+        }
+        
+        // Filter by search text (search in both top-level and their dependencies)
+        if !searchText.isEmpty {
+            let query = searchText.lowercased()
+            filtered = filtered.filter { package in
+                // Match the package itself
+                let matchesSelf = package.name.lowercased().contains(query) ||
+                    package.fullName.lowercased().contains(query) ||
+                    (package.description?.lowercased().contains(query) ?? false)
+                
+                // Or match any of its dependencies
+                let matchesDeps = (package.runtimeDependencies ?? []).contains { depName in
+                    depName.lowercased().contains(query)
+                }
+                
+                return matchesSelf || matchesDeps
+            }
+        }
+        
+        return filtered.sorted { $0.name.lowercased() < $1.name.lowercased() }
+    }
+    
+    /// Get the resolved dependency packages for a given package
+    func dependencyPackages(for package: BrewPackage) -> [BrewPackage] {
+        guard let depNames = package.runtimeDependencies else { return [] }
+        
+        return depNames.compactMap { depName in
+            packagesByName[depName]
+        }.sorted { $0.name.lowercased() < $1.name.lowercased() }
+    }
+    
+    /// Check if a package has dependencies
+    func hasDependencies(_ package: BrewPackage) -> Bool {
+        guard let deps = package.runtimeDependencies else { return false }
+        return !deps.isEmpty
+    }
+    
+    /// Toggle expansion state of a package
+    func toggleExpanded(_ package: BrewPackage) {
+        if expandedPackages.contains(package.id) {
+            expandedPackages.remove(package.id)
+        } else {
+            expandedPackages.insert(package.id)
+        }
+    }
+    
+    /// Check if a package is expanded
+    func isExpanded(_ package: BrewPackage) -> Bool {
+        expandedPackages.contains(package.id)
+    }
+    
+    /// Flat list of filtered packages (for use in views that need a simple list, like PackageListView)
     var filteredPackages: [BrewPackage] {
         var filtered = packages
         
@@ -58,6 +128,16 @@ final class InstalledPackagesViewModel {
     
     var totalCount: Int {
         packages.count
+    }
+    
+    /// Count of packages explicitly requested/installed by the user
+    var requestedCount: Int {
+        packages.filter { $0.isInstalledOnRequest == true || $0.type == .cask }.count
+    }
+    
+    /// Count of packages installed as dependencies
+    var dependencyCount: Int {
+        packages.filter { $0.isInstalledOnRequest == false && $0.type == .formula }.count
     }
     
     // MARK: - Private
