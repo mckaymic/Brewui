@@ -10,7 +10,7 @@ permissions:
 jobs:
   build:
     name: Build and Release macOS App
-    runs-on: macos-15
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Repository
@@ -37,13 +37,28 @@ jobs:
           # Compress the app bundle using ditto to preserve metadata and code signature
           ditto -c -k --sequesterRsrc --keepParent Brewui.xcarchive/Products/Applications/Brewui.app Brewui-macOS.zip
 
+      - name: Install create-dmg
+        run: brew install create-dmg
+
       - name: Package App (.dmg)
         run: |
-          # Create a mountable DMG disk image
+          # Set up folder to package
           mkdir -p dmg_root
           cp -R Brewui.xcarchive/Products/Applications/Brewui.app dmg_root/
-          # Create the DMG file
-          hdiutil create -volname "Brewui" -srcfolder dmg_root -ov -format UDZO Brewui-macOS.dmg
+          
+          # Build a beautiful DMG using create-dmg
+          create-dmg \
+            --volname "Brewui" \
+            --volicon "Brewui.xcarchive/Products/Applications/Brewui.app/Contents/Resources/AppIcon.icns" \
+            --background ".github/assets/dmg_background.png" \
+            --window-pos 200 120 \
+            --window-size 600 600 \
+            --icon-size 100 \
+            --icon "Brewui.app" 140 300 \
+            --hide-extension "Brewui.app" \
+            --app-drop-link 460 300 \
+            "Brewui-macOS.dmg" \
+            "dmg_root"
 
       - name: Upload Release Assets
         env:
