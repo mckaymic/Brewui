@@ -1,0 +1,52 @@
+name: Release Brewui
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Release macOS App
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode Version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build and Archive App
+        run: |
+          xcodebuild archive \
+            -project Brewui.xcodeproj \
+            -scheme Brewui \
+            -configuration Release \
+            -archivePath Brewui.xcarchive \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES
+
+      - name: Package App (.zip)
+        run: |
+          # Compress the app bundle using ditto to preserve metadata and code signature
+          ditto -c -k --sequesterRsrc --keepParent Brewui.xcarchive/Products/Applications/Brewui.app Brewui-macOS.zip
+
+      - name: Package App (.dmg)
+        run: |
+          # Create a mountable DMG disk image
+          mkdir -p dmg_root
+          cp -R Brewui.xcarchive/Products/Applications/Brewui.app dmg_root/
+          # Create the DMG file
+          hdiutil create -volname "Brewui" -srcfolder dmg_root -ov -format UDZO Brewui-macOS.dmg
+
+      - name: Upload Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} Brewui-macOS.zip Brewui-macOS.dmg --clobber

@@ -206,6 +206,37 @@ final class UpdatesViewModel {
         isUpdating = false
     }
     
+    /// Uninstalls a package
+    func uninstallPackage(_ package: BrewPackage) async {
+        guard !isUpdating else { return }
+        
+        isUpdating = true
+        appError = nil
+        operationStatus = .inProgress(message: "Uninstalling \(package.name)...")
+        
+        do {
+            try await brewService.uninstallPackage(package)
+            
+            // Remove from local lists
+            outdatedPackages.removeAll { $0.id == package.id }
+            pinnedPackages.removeAll { $0.id == package.id }
+            selectedPackages.remove(package.id)
+            
+            operationStatus = .success(message: "Successfully uninstalled \(package.name)")
+            
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+        
+        isUpdating = false
+    }
+    
     /// Updates selected packages
     func updateSelected() async {
         guard !isUpdating && !selectedPackages.isEmpty else { return }
