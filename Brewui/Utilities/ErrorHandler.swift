@@ -15,15 +15,15 @@ struct AppError: LocalizedError, Identifiable, Sendable {
     let message: String
     let suggestion: String?
     let underlyingErrorDescription: String?
-    
+
     nonisolated var errorDescription: String? {
         message
     }
-    
+
     nonisolated var recoverySuggestion: String? {
         suggestion
     }
-    
+
     init(
         title: String,
         message: String,
@@ -35,7 +35,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
         self.suggestion = suggestion
         self.underlyingErrorDescription = underlyingError?.localizedDescription
     }
-    
+
     /// Creates an AppError from a BrewServiceError
     nonisolated static func from(_ error: BrewServiceError) -> AppError {
         switch error {
@@ -45,7 +45,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 message: "Homebrew is not installed on this system.",
                 suggestion: "Install Homebrew from the setup screen to continue."
             )
-            
+
         case .commandFailed(let message):
             return AppError(
                 title: "Command Failed",
@@ -53,7 +53,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: message.isEmpty ? nil : "Details: \(message)",
                 underlyingError: error
             )
-            
+
         case .installationFailed(let message):
             return AppError(
                 title: "Installation Failed",
@@ -61,7 +61,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: message,
                 underlyingError: error
             )
-            
+
         case .installFailed(let package, let message):
             return AppError(
                 title: "Installation Failed",
@@ -69,7 +69,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: parseBrewError(message),
                 underlyingError: error
             )
-            
+
         case .uninstallFailed(let package, let message):
             return AppError(
                 title: "Uninstall Failed",
@@ -77,7 +77,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: parseBrewError(message),
                 underlyingError: error
             )
-            
+
         case .reinstallFailed(let package, let message):
             return AppError(
                 title: "Reinstall Failed",
@@ -85,7 +85,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: parseBrewError(message),
                 underlyingError: error
             )
-            
+
         case .upgradeFailed(let package, let message):
             return AppError(
                 title: "Upgrade Failed",
@@ -93,14 +93,14 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: parseBrewError(message),
                 underlyingError: error
             )
-            
+
         case .packageNotFound(let name):
             return AppError(
                 title: "Package Not Found",
                 message: "The package '\(name)' could not be found.",
                 suggestion: "Check the package name and try again."
             )
-            
+
         case .tapFailed(let tap, let message):
             return AppError(
                 title: "Tap Failed",
@@ -108,7 +108,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: parseBrewError(message),
                 underlyingError: error
             )
-            
+
         case .untapFailed(let tap, let message):
             return AppError(
                 title: "Remove Tap Failed",
@@ -116,7 +116,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: parseBrewError(message),
                 underlyingError: error
             )
-            
+
         case .pinFailed(let package, let message):
             return AppError(
                 title: "Pin Failed",
@@ -124,7 +124,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: parseBrewError(message),
                 underlyingError: error
             )
-            
+
         case .unpinFailed(let package, let message):
             return AppError(
                 title: "Unpin Failed",
@@ -134,28 +134,28 @@ struct AppError: LocalizedError, Identifiable, Sendable {
             )
         }
     }
-    
+
     /// Creates an AppError from any Error
     nonisolated static func from(_ error: any Error) -> AppError {
         if let brewError = error as? BrewServiceError {
             return from(brewError)
         }
-        
+
         if let processError = error as? ProcessRunnerError {
             return from(processError)
         }
-        
+
         if let apiError = error as? FormulaeAPIError {
             return from(apiError)
         }
-        
+
         return AppError(
             title: "Error",
             message: error.localizedDescription,
             underlyingError: error
         )
     }
-    
+
     /// Creates an AppError from a FormulaeAPIError
     nonisolated static func from(_ error: FormulaeAPIError) -> AppError {
         switch error {
@@ -166,7 +166,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: message.isEmpty ? "Check your internet connection and try again." : message,
                 underlyingError: error
             )
-            
+
         case .decodingError(let message):
             return AppError(
                 title: "Data Error",
@@ -174,7 +174,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
                 suggestion: message.isEmpty ? "Try refreshing the package database." : message,
                 underlyingError: error
             )
-            
+
         case .cacheNotLoaded:
             return AppError(
                 title: "Cache Not Loaded",
@@ -183,7 +183,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
             )
         }
     }
-    
+
     /// Creates an AppError from a ProcessRunnerError
     nonisolated static func from(_ error: ProcessRunnerError) -> AppError {
         switch error {
@@ -216,35 +216,35 @@ struct AppError: LocalizedError, Identifiable, Sendable {
             )
         }
     }
-    
+
     /// Parses common Homebrew error messages for user-friendly suggestions
     private nonisolated static func parseBrewError(_ message: String) -> String? {
         let lowerMessage = message.lowercased()
-        
+
         if lowerMessage.contains("permission denied") {
             return "Check your file permissions or try running with administrator privileges."
         }
-        
+
         if lowerMessage.contains("network") || lowerMessage.contains("curl") || lowerMessage.contains("download") {
             return "Check your internet connection and try again."
         }
-        
+
         if lowerMessage.contains("already installed") {
             return "This package is already installed on your system."
         }
-        
+
         if lowerMessage.contains("not installed") {
             return "This package is not installed on your system."
         }
-        
+
         if lowerMessage.contains("dependency") {
             return "There was an issue with package dependencies. Try running 'brew doctor' in Terminal."
         }
-        
+
         if lowerMessage.contains("conflict") {
             return "There's a conflict with another package. Check the error details."
         }
-        
+
         // Return the original message if no specific pattern matched
         return message.isEmpty ? nil : message
     }
@@ -255,7 +255,7 @@ struct AppError: LocalizedError, Identifiable, Sendable {
 struct ErrorAlertModifier: ViewModifier {
     @Binding var error: AppError?
     var onDismiss: (() -> Void)?
-    
+
     func body(content: Content) -> some View {
         content
             .alert(
@@ -270,7 +270,7 @@ struct ErrorAlertModifier: ViewModifier {
                 VStack {
                     if let error = error {
                         Text(error.message)
-                        
+
                         if let suggestion = error.suggestion {
                             Text(suggestion)
                                 .font(.caption)
@@ -294,14 +294,14 @@ extension View {
 struct StatusOverlayModifier: ViewModifier {
     let status: OperationStatus
     var onDismiss: (() -> Void)?
-    
+
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
             statusOverlay
                 .animation(.easeInOut(duration: 0.2), value: status)
         }
     }
-    
+
     @ViewBuilder
     private var statusOverlay: some View {
         switch status {
@@ -332,23 +332,23 @@ extension View {
 struct ErrorBanner: View {
     let error: AppError
     let onDismiss: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.white)
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(error.title)
                     .fontWeight(.semibold)
-                
+
                 Text(error.message)
                     .font(.caption)
                     .opacity(0.9)
             }
-            
+
             Spacer()
-            
+
             Button {
                 onDismiss()
             } label: {
@@ -373,7 +373,7 @@ struct ConfirmAction {
     let confirmLabel: String
     let confirmRole: ButtonRole?
     let action: () async -> Void
-    
+
     init(
         title: String,
         message: String,
@@ -387,7 +387,7 @@ struct ConfirmAction {
         self.confirmRole = confirmRole
         self.action = action
     }
-    
+
     static func uninstall(package: BrewPackage, action: @escaping () async -> Void) -> ConfirmAction {
         ConfirmAction(
             title: "Uninstall \(package.name)?",
@@ -397,7 +397,7 @@ struct ConfirmAction {
             action: action
         )
     }
-    
+
     static func updateAll(count: Int, action: @escaping () async -> Void) -> ConfirmAction {
         ConfirmAction(
             title: "Update All Packages?",

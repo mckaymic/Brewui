@@ -90,9 +90,10 @@ struct BrewPackage: Identifiable, Codable, Hashable, Sendable {
         installedVersion != nil
     }
     
-    /// Whether the package supports pinning (only formulas can be pinned)
+    /// Whether the package supports pinning. As of Homebrew 6, both formulae
+    /// and casks can be pinned, provided they are installed.
     nonisolated var canBePinned: Bool {
-        type == .formula && isInstalled
+        isInstalled
     }
     
     /// Returns the tap name (e.g., "homebrew/core", "homebrew/cask", or "user/tap")
@@ -271,7 +272,9 @@ extension BrewPackage {
         
         let isOutdated = json["outdated"] as? Bool ?? false
         let autoUpdates = json["auto_updates"] as? Bool ?? false
-        
+        // Homebrew 6 exposes cask pin state via the `pinned` field.
+        let isPinned = json["pinned"] as? Bool ?? false
+
         return BrewPackage(
             name: token,
             fullName: fullName,
@@ -281,6 +284,7 @@ extension BrewPackage {
             homepage: homepage,
             type: .cask,
             isOutdated: isOutdated,
+            isPinned: isPinned,
             autoUpdates: autoUpdates
         )
     }

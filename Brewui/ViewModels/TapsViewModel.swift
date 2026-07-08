@@ -53,6 +53,11 @@ final class TapsViewModel {
     var thirdPartyCount: Int {
         taps.filter { !$0.isOfficial }.count
     }
+
+    /// Number of third-party taps that are not yet trusted
+    var untrustedCount: Int {
+        taps.filter { $0.needsTrust }.count
+    }
     
     // MARK: - Private
     
@@ -151,6 +156,42 @@ final class TapsViewModel {
         }
     }
     
+    /// Trusts a third-party tap so Homebrew will load its code
+    func trustTap(_ tap: Tap) async {
+        operationStatus = .inProgress(message: "Trusting tap \(tap.name)...")
+        appError = nil
+
+        do {
+            try await brewService.trustTap(tap) { [weak self] message in
+                Task { @MainActor in
+                    self?.operationStatus = .inProgress(message: message)
+                }
+            }
+
+            // Update local state so the badge/action reflect the new trust
+            if let index = taps.firstIndex(where: { $0.id == tap.id }) {
+                taps[index] = Tap(
+                    name: tap.name,
+                    url: tap.url,
+                    isPinned: tap.isPinned,
+                    isTrusted: true,
+                    isOfficial: tap.isOfficial
+                )
+            }
+
+            operationStatus = .success(message: "Trusted tap \(tap.name)")
+
+            // Clear status after delay
+            try? await Task.sleep(for: .seconds(3))
+            if case .success = operationStatus {
+                operationStatus = .idle
+            }
+        } catch {
+            operationStatus = .failure(message: error.localizedDescription)
+            appError = AppError.from(error)
+        }
+    }
+
     /// Updates a specific tap
     func updateTap(_ tap: Tap) async {
         operationStatus = .inProgress(message: "Updating tap \(tap.name)...")

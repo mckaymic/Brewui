@@ -151,6 +151,11 @@ struct TapsView: View {
                                 await viewModel.updateTap(tap)
                             }
                         },
+                        onTrust: {
+                            Task {
+                                await viewModel.trustTap(tap)
+                            }
+                        },
                         isOperationInProgress: viewModel.operationStatus.isInProgress
                     )
                 }
@@ -330,8 +335,9 @@ struct TapRow: View {
     let tap: Tap
     let onRemove: () -> Void
     let onUpdate: () -> Void
+    let onTrust: () -> Void
     let isOperationInProgress: Bool
-    
+
     @State private var isHovering = false
     
     var body: some View {
@@ -350,9 +356,16 @@ struct TapRow: View {
             
             // Tap info
             VStack(alignment: .leading, spacing: 4) {
-                Text(tap.name)
-                    .fontWeight(.medium)
-                
+                HStack(spacing: 6) {
+                    Text(tap.name)
+                        .fontWeight(.medium)
+
+                    // Trust status (only meaningful for third-party taps)
+                    if !tap.isOfficial {
+                        TrustBadge(isTrusted: tap.isTrusted)
+                    }
+                }
+
                 Text(tap.typeDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -372,6 +385,21 @@ struct TapRow: View {
             // Action buttons (visible on hover)
             if isHovering && !isOperationInProgress {
                 HStack(spacing: 8) {
+                    if tap.needsTrust {
+                        Button {
+                            onTrust()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.shield")
+                                Text("Trust")
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .help("Allow Homebrew to load this tap's code")
+                    }
+
                     Button {
                         onUpdate()
                     } label: {
@@ -429,6 +457,26 @@ struct StatBadge: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(color)
         }
+    }
+}
+
+struct TrustBadge: View {
+    let isTrusted: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: isTrusted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+            Text(isTrusted ? "Trusted" : "Untrusted")
+        }
+        .font(.caption2)
+        .fontWeight(.medium)
+        .foregroundStyle(isTrusted ? Color.green : Color.orange)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background((isTrusted ? Color.green : Color.orange).opacity(0.15), in: Capsule())
+        .help(isTrusted
+              ? "Homebrew is allowed to load this tap's code"
+              : "Homebrew will refuse to load this tap's code when HOMEBREW_REQUIRE_TAP_TRUST is set")
     }
 }
 
