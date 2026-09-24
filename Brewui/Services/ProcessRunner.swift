@@ -125,6 +125,14 @@ actor ProcessRunner {
                 } else {
                     env["PATH"] = homebrewPaths
                 }
+
+                // There is no TTY for sudo to prompt on, so point it at our
+                // GUI askpass helper. Homebrew 6 passes `-A` to sudo whenever
+                // SUDO_ASKPASS is set, making cask installs that need root work.
+                if env["SUDO_ASKPASS"] == nil,
+                   let askpass = AskpassManager.shared.scriptPath() {
+                    env["SUDO_ASKPASS"] = askpass
+                }
                 
                 // Add any custom environment variables
                 if let customEnv = environment {

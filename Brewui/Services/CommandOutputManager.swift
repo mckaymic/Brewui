@@ -64,7 +64,10 @@ final class CommandOutputManager {
         }
     }
 
-    /// Patterns that indicate a password prompt
+    /// Patterns that indicate a password prompt or a failed sudo
+    /// authentication. Sudo prompts normally appear as a GUI dialog via the
+    /// askpass helper (see AskpassManager), so these mostly catch failures —
+    /// wrong password, cancelled dialog — plus any terminal-style prompts.
     private let passwordPromptPatterns = [
         "Password:",
         "password:",
@@ -73,7 +76,14 @@ final class CommandOutputManager {
         "passphrase for",
         "sudo:",
         "authentication required",
-        "Authentication required"
+        "Authentication required",
+        "Sorry, try again",
+        "incorrect password attempt",
+        "no password was provided",
+        "a password is required",
+        // Corporate PAM policies can replace the standard sudo wording
+        "Credentials Required",
+        "unauthorized credentials"
     ]
 
     /// The currently active command (if any)
