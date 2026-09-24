@@ -333,6 +333,29 @@ actor BrewService {
 
     // MARK: - Install/Uninstall
 
+    /// Whether a command failed because the sudo askpass dialog was
+    /// cancelled or the password was wrong.
+    private nonisolated func isSudoAuthFailure(_ result: ProcessResult) -> Bool {
+        let sudoAuthFailures = [
+            "incorrect password attempt",
+            "no password was provided",
+            "a password is required",
+            "no askpass program specified",
+            // Corporate PAM policies can replace the standard sudo wording
+            "unauthorized credentials"
+        ]
+        return sudoAuthFailures.contains(where: { result.combinedOutput.contains($0) })
+    }
+
+    private static let sudoAuthFailureMessage =
+        "Administrator authentication failed or was cancelled. This operation needs an admin password to complete."
+
+    /// Returns a clear message when a command failed because of sudo
+    /// authentication; otherwise returns the raw error output.
+    private nonisolated func failureMessage(from result: ProcessResult) -> String {
+        isSudoAuthFailure(result) ? Self.sudoAuthFailureMessage : result.errorOutput
+    }
+
     /// Installs a package
     func installPackage(_ package: BrewPackage, progressHandler: ((String) -> Void)? = nil) async throws {
         // `--yes` bypasses Homebrew 6's interactive "ask mode" confirmation prompt,
@@ -349,12 +372,12 @@ actor BrewService {
         let result = try await runWithOutputTracking(
             arguments: args,
             commandDescription: commandDesc,
-            timeout: 600, // 10 minutes
+            timeout: 1800, // 30 minutes: covers slow downloads plus time spent in the sudo askpass dialog
             progressHandler: progressHandler
         )
-        
+
         if !result.isSuccess {
-            throw BrewServiceError.installFailed(package: package.name, message: result.errorOutput)
+            throw BrewServiceError.installFailed(package: package.name, message: failureMessage(from: result))
         }
     }
 
@@ -371,12 +394,12 @@ actor BrewService {
         let result = try await runWithOutputTracking(
             arguments: args,
             commandDescription: commandDesc,
-            timeout: 300, // 5 minutes
+            timeout: 600, // 10 minutes: cask pkg uninstalls may wait on the sudo askpass dialog
             progressHandler: progressHandler
         )
-        
+
         if !result.isSuccess {
-            throw BrewServiceError.uninstallFailed(package: package.name, message: result.errorOutput)
+            throw BrewServiceError.uninstallFailed(package: package.name, message: failureMessage(from: result))
         }
     }
 
@@ -395,13 +418,13 @@ actor BrewService {
         let result = try await runWithOutputTracking(
             arguments: args,
             commandDescription: commandDesc,
-            timeout: 600, // 10 minutes
+            timeout: 1800, // 30 minutes: covers slow downloads plus time spent in the sudo askpass dialog
             progressHandler: progressHandler
         )
-        
+
         if !result.isSuccess {
             print("[BrewService] Failed to reinstall package: \(result.errorOutput)")
-            throw BrewServiceError.reinstallFailed(package: package.name, message: result.errorOutput)
+            throw BrewServiceError.reinstallFailed(package: package.name, message: failureMessage(from: result))
         }
         
         print("[BrewService] Successfully reinstalled: \(package.name)")
@@ -467,12 +490,12 @@ actor BrewService {
         let result = try await runWithOutputTracking(
             arguments: args,
             commandDescription: commandDesc,
-            timeout: 600,
+            timeout: 1800, // 30 minutes: covers slow downloads plus time spent in the sudo askpass dialog
             progressHandler: progressHandler
         )
-        
+
         if !result.isSuccess {
-            throw BrewServiceError.upgradeFailed(package: package.name, message: result.errorOutput)
+            throw BrewServiceError.upgradeFailed(package: package.name, message: failureMessage(from: result))
         }
     }
 
@@ -487,7 +510,7 @@ actor BrewService {
         )
 
         if !formulaResult.isSuccess {
-            throw BrewServiceError.commandFailed(formulaResult.errorOutput)
+            throw BrewServiceError.commandFailed(failureMessage(from: formulaResult))
         }
 
         // Upgrade casks
@@ -498,6 +521,12 @@ actor BrewService {
             progressHandler: progressHandler
         )
         
+        // Casks with pkg installers need sudo; a cancelled or failed password
+        // is worth surfacing rather than folding into the generic note below
+        if !caskResult.isSuccess && isSudoAuthFailure(caskResult) {
+            throw BrewServiceError.commandFailed(Self.sudoAuthFailureMessage)
+        }
+
         // Cask upgrade might fail if no casks are outdated, which is fine
         if !caskResult.isSuccess && !caskResult.errorOutput.contains("No casks to upgrade") {
             // Log but don't throw for cask-only errors
