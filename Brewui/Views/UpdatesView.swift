@@ -11,7 +11,9 @@ import SwiftUI
 struct UpdatesView: View {
     @Bindable var viewModel: UpdatesViewModel
     @State private var selectedPackage: BrewPackage?
-
+    @State private var packageToUninstall: BrewPackage?
+    @State private var showingUninstallConfirmation = false
+    
     var body: some View {
         VStack(spacing: 0) {
             // Toolbar
@@ -38,9 +40,8 @@ struct UpdatesView: View {
                 package: package,
                 isInstalled: true,
                 onUninstall: {
-                    Task {
-                        await viewModel.uninstallPackage(package)
-                    }
+                    packageToUninstall = package
+                    showingUninstallConfirmation = true
                 },
                 onUpdate: {
                     Task {
@@ -63,6 +64,22 @@ struct UpdatesView: View {
                     }
                 }
             )
+        }
+        .confirmationDialog(
+            "Uninstall \(packageToUninstall?.name ?? "")?",
+            isPresented: $showingUninstallConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Uninstall", role: .destructive) {
+                if let package = packageToUninstall {
+                    Task {
+                        await viewModel.uninstallPackage(package)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This will remove the package from your system.")
         }
         .statusOverlay(status: viewModel.operationStatus) {
             viewModel.clearOperationStatus()
