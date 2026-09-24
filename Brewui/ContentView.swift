@@ -14,10 +14,11 @@ enum NavigationDestination: String, CaseIterable, Identifiable {
     case updates = "Updates"
     case taps = "Taps"
     case bundles = "Bundles"
+    case vulnerabilities = "Security"
     case homebrewDetails = "Homebrew"
-    
+
     var id: String { rawValue }
-    
+
     var icon: String {
         switch self {
         case .installed: return "shippingbox.fill"
@@ -25,10 +26,11 @@ enum NavigationDestination: String, CaseIterable, Identifiable {
         case .updates: return "arrow.triangle.2.circlepath"
         case .taps: return "square.stack.3d.up"
         case .bundles: return "list.bullet.rectangle"
+        case .vulnerabilities: return "shield.lefthalf.filled"
         case .homebrewDetails: return "mug.fill"
         }
     }
-    
+
     var description: String {
         switch self {
         case .installed: return "Manage installed packages"
@@ -36,13 +38,14 @@ enum NavigationDestination: String, CaseIterable, Identifiable {
         case .updates: return "Check for updates"
         case .taps: return "Manage external repositories"
         case .bundles: return "Export & import packages"
+        case .vulnerabilities: return "Scan for known vulnerabilities"
         case .homebrewDetails: return "Homebrew installation details"
         }
     }
-    
+
     /// Returns destinations shown in the main Packages section
     static var packageDestinations: [NavigationDestination] {
-        [.installed, .browse, .updates, .taps, .bundles]
+        [.installed, .browse, .updates, .taps, .bundles, .vulnerabilities]
     }
 }
 
@@ -51,16 +54,20 @@ struct ContentView: View {
     @State private var homebrewStatus: HomebrewStatus = .checking
     @State private var selectedDestination: NavigationDestination = .installed
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
-    
+
     // View Models (shared across views)
     @State private var installedViewModel = InstalledPackagesViewModel()
     @State private var browseViewModel = BrowsePackagesViewModel()
     @State private var updatesViewModel = UpdatesViewModel()
     @State private var tapsViewModel = TapsViewModel()
     @State private var packageListViewModel = PackageListViewModel()
-    
+    @State private var vulnerabilitiesViewModel = VulnerabilitiesViewModel()
+
+    // Command output manager
+    @State private var commandOutputManager = CommandOutputManager.shared
+
     private let brewService = BrewService.shared
-    
+
     var body: some View {
         Group {
             switch homebrewStatus {
@@ -80,33 +87,47 @@ struct ContentView: View {
             await checkHomebrew()
         }
     }
-    
+
     // MARK: - Checking Homebrew View
-    
+
     private var checkingHomebrewView: some View {
         VStack(spacing: 16) {
             ProgressView()
                 .scaleEffect(1.2)
-            
+
             Text("Checking for Homebrew...")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     // MARK: - Main Navigation View
-    
+
     private var mainNavigationView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebar
-        } detail: {
-            detailView
+        ZStack(alignment: .bottom) {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                sidebar
+            } detail: {
+                detailView
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            CommandOutputToggleButton(manager: commandOutputManager)
+                        }
+                    }
+            }
+            .navigationSplitViewStyle(.balanced)
+
+            // Command output drawer - only shown when open
+            if commandOutputManager.isDrawerOpen {
+                CommandOutputDrawerView(manager: commandOutputManager)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
-        .navigationSplitViewStyle(.balanced)
+        .animation(.easeInOut(duration: 0.25), value: commandOutputManager.isDrawerOpen)
     }
-    
+
     // MARK: - Sidebar
-    
+
     private var sidebar: some View {
         List(selection: $selectedDestination) {
             Section {
@@ -116,7 +137,7 @@ struct ContentView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
                                     Text(destination.rawValue)
-                                    
+
                                     // Update badge
                                     if destination == .updates && updatesViewModel.hasUpdates {
                                         Text("\(updatesViewModel.updateCount)")
@@ -127,39 +148,50 @@ struct ContentView: View {
                                             .padding(.vertical, 2)
                                             .background(.orange, in: Capsule())
                                     }
-                                    
+
                                     // Package count badge
                                     if destination == .installed && installedViewModel.totalCount > 0 {
                                         Text("\(installedViewModel.totalCount)")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
-                                    
+
                                     // Tap count badge
                                     if destination == .taps && tapsViewModel.totalCount > 0 {
                                         Text("\(tapsViewModel.totalCount)")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
+
+                                    // Vulnerability count badge (only after a scan)
+                                    if destination == .vulnerabilities && vulnerabilitiesViewModel.totalVulnerabilityCount > 0 {
+                                        Text("\(vulnerabilitiesViewModel.totalVulnerabilityCount)")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(.red, in: Capsule())
+                                    }
                                 }
                             }
                         } icon: {
                             Image(systemName: destination.icon)
-                                .foregroundStyle(destination == .updates && updatesViewModel.hasUpdates ? Color.orange : Color.accentColor)
+                                .foregroundStyle(iconColor(for: destination))
                         }
                     }
                 }
             } header: {
                 Text("Packages")
             }
-            
+
             Section {
                 // Homebrew info - clickable
                 NavigationLink(value: NavigationDestination.homebrewDetails) {
                     HStack(spacing: 8) {
                         Image(systemName: "mug.fill")
                             .foregroundStyle(.orange)
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Homebrew")
                                 .font(.caption)
@@ -192,9 +224,9 @@ struct ContentView: View {
             .background(.bar)
         }
     }
-    
+
     // MARK: - Detail View
-    
+
     @ViewBuilder
     private var detailView: some View {
         switch selectedDestination {
@@ -213,26 +245,39 @@ struct ContentView: View {
         case .bundles:
             PackageListView(viewModel: packageListViewModel, installedViewModel: installedViewModel)
                 .navigationTitle("Bundles")
+        case .vulnerabilities:
+            VulnerabilitiesView(viewModel: vulnerabilitiesViewModel)
+                .navigationTitle("Security")
         case .homebrewDetails:
             HomebrewDetailsView()
                 .navigationTitle("Homebrew")
         }
     }
-    
+
+    private func iconColor(for destination: NavigationDestination) -> Color {
+        if destination == .updates && updatesViewModel.hasUpdates {
+            return .orange
+        }
+        if destination == .vulnerabilities && vulnerabilitiesViewModel.totalVulnerabilityCount > 0 {
+            return .red
+        }
+        return .accentColor
+    }
+
     // MARK: - Helper Methods
-    
+
     private func checkHomebrew() async {
         print("[ContentView] Checking for Homebrew...")
         homebrewStatus = .checking
-        
+
         let isInstalled = await brewService.isHomebrewInstalled()
         print("[ContentView] Homebrew installed: \(isInstalled)")
-        
+
         await MainActor.run {
             if isInstalled {
                 homebrewStatus = .installed(path: "")
                 print("[ContentView] Starting to load packages and check updates...")
-                
+
                 // Start loading data
                 Task {
                     await installedViewModel.loadPackages()

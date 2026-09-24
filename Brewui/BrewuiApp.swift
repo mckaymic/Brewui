@@ -10,7 +10,8 @@ import SwiftUI
 @main
 struct BrewuiApp: App {
     @State private var showingAbout = false
-    
+    @State private var commandOutputManager = CommandOutputManager.shared
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -29,11 +30,11 @@ struct BrewuiApp: App {
                     showingAbout = true
                 }
             }
-            
+
             CommandGroup(replacing: .newItem) {
                 // Remove new window command
             }
-            
+
             // File menu - Export/Import
             CommandGroup(after: .importExport) {
                 Button("Export Bundle...") {
@@ -43,7 +44,7 @@ struct BrewuiApp: App {
                     )
                 }
                 .keyboardShortcut("E", modifiers: [.command, .shift])
-                
+
                 Button("Import Bundle...") {
                     NotificationCenter.default.post(
                         name: .importBundle,
@@ -51,6 +52,27 @@ struct BrewuiApp: App {
                     )
                 }
                 .keyboardShortcut("I", modifiers: [.command, .shift])
+            }
+
+            // View menu - Console options
+            CommandGroup(after: .toolbar) {
+                Divider()
+
+                Toggle("Show Console on Errors", isOn: Binding(
+                    get: { commandOutputManager.autoShowConsole },
+                    set: { commandOutputManager.autoShowConsole = $0 }
+                ))
+
+                Button("Show Console") {
+                    commandOutputManager.isDrawerOpen = true
+                }
+                .keyboardShortcut("C", modifiers: [.command, .shift])
+                .disabled(commandOutputManager.isDrawerOpen)
+
+                Button("Hide Console") {
+                    commandOutputManager.isDrawerOpen = false
+                }
+                .disabled(!commandOutputManager.isDrawerOpen)
             }
         }
     }

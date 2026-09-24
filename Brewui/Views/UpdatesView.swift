@@ -18,9 +18,9 @@ struct UpdatesView: View {
         VStack(spacing: 0) {
             // Toolbar
             toolbarContent
-            
+
             Divider()
-            
+
             // Content
             if viewModel.isChecking && viewModel.outdatedPackages.isEmpty {
                 checkingView
@@ -86,9 +86,9 @@ struct UpdatesView: View {
         }
         .errorAlert(error: $viewModel.appError)
     }
-    
+
     // MARK: - Toolbar
-    
+
     private var toolbarContent: some View {
         HStack(spacing: 16) {
             // Status text
@@ -97,7 +97,7 @@ struct UpdatesView: View {
                     HStack(spacing: 8) {
                         Text("\(viewModel.updateCount) update\(viewModel.updateCount == 1 ? "" : "s") available")
                             .font(.headline)
-                        
+
                         if viewModel.hasPinnedUpdates {
                             Text("(\(viewModel.pinnedCount) pinned)")
                                 .font(.caption)
@@ -111,16 +111,16 @@ struct UpdatesView: View {
                     Text("All packages up to date")
                         .font(.headline)
                 }
-                
+
                 if let lastChecked = viewModel.lastCheckedString {
                     Text("Last checked \(lastChecked)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            
+
             Spacer()
-            
+
             // Selection controls
             if viewModel.hasUpdates {
                 HStack(spacing: 8) {
@@ -135,7 +135,7 @@ struct UpdatesView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    
+
                     if viewModel.selectedCount > 0 {
                         Button {
                             Task {
@@ -153,7 +153,7 @@ struct UpdatesView: View {
                     }
                 }
             }
-            
+
             // Update All button
             if viewModel.hasUpdates {
                 Button {
@@ -169,7 +169,7 @@ struct UpdatesView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(viewModel.isUpdating)
             }
-            
+
             // Check for updates button
             Button {
                 Task {
@@ -183,9 +183,9 @@ struct UpdatesView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
     }
-    
+
     // MARK: - Updates List
-    
+
     private var updatesList: some View {
         ScrollView {
             LazyVStack(spacing: 1) {
@@ -196,7 +196,7 @@ struct UpdatesView: View {
                         count: viewModel.formulaUpdates.count,
                         icon: "terminal"
                     )
-                    
+
                     ForEach(viewModel.formulaUpdates) { package in
                         UpdateRow(
                             package: package,
@@ -223,7 +223,7 @@ struct UpdatesView: View {
                         )
                     }
                 }
-                
+
                 // Cask updates section
                 if !viewModel.caskUpdates.isEmpty {
                     SectionHeader(
@@ -231,7 +231,7 @@ struct UpdatesView: View {
                         count: viewModel.caskUpdates.count,
                         icon: "macwindow"
                     )
-                    
+
                     ForEach(viewModel.caskUpdates) { package in
                         UpdateRow(
                             package: package,
@@ -249,12 +249,16 @@ struct UpdatesView: View {
                                     await viewModel.updatePackage(package)
                                 }
                             },
-                            onPin: nil, // Casks can't be pinned
+                            onPin: {
+                                Task {
+                                    await viewModel.pinPackage(package)
+                                }
+                            },
                             onUnpin: nil
                         )
                     }
                 }
-                
+
                 // Pinned packages section
                 if viewModel.hasPinnedUpdates {
                     SectionHeader(
@@ -262,7 +266,7 @@ struct UpdatesView: View {
                         count: viewModel.pinnedCount,
                         icon: "pin.fill"
                     )
-                    
+
                     ForEach(viewModel.pinnedPackages) { package in
                         UpdateRow(
                             package: package,
@@ -288,30 +292,30 @@ struct UpdatesView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
     }
-    
+
     // MARK: - Up to Date View
-    
+
     private var upToDateView: some View {
         VStack(spacing: 24) {
             ZStack {
                 Circle()
                     .fill(Color.green.opacity(0.15))
                     .frame(width: 100, height: 100)
-                
+
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 56))
                     .foregroundStyle(.green)
             }
-            
+
             VStack(spacing: 8) {
                 Text("All Up to Date")
                     .font(.title2)
                     .fontWeight(.semibold)
-                
+
                 Text("All your packages are running the latest versions")
                     .foregroundStyle(.secondary)
             }
-            
+
             Button {
                 Task {
                     await viewModel.checkForUpdates()
@@ -323,20 +327,20 @@ struct UpdatesView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     // MARK: - Checking View
-    
+
     private var checkingView: some View {
         VStack(spacing: 16) {
             ProgressView()
                 .scaleEffect(1.2)
-            
+
             Text("Checking for updates...")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
 }
 
 // MARK: - Section Header
@@ -345,18 +349,18 @@ struct SectionHeader: View {
     let title: String
     let count: Int
     let icon: String
-    
+
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
                 .foregroundStyle(.secondary)
-            
+
             Text(title)
                 .fontWeight(.semibold)
-            
+
             Text("(\(count))")
                 .foregroundStyle(.secondary)
-            
+
             Spacer()
         }
         .font(.subheadline)
@@ -378,17 +382,17 @@ struct UpdateRow: View {
     let onUpdate: (() -> Void)?
     let onPin: (() -> Void)?
     let onUnpin: (() -> Void)?
-    
+
     @State private var isHovering = false
-    
+
     private var isPinned: Bool {
         package.isPinned
     }
-    
+
     private var canBePinned: Bool {
         package.canBePinned && !isPinned
     }
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Checkbox or pin icon
@@ -407,20 +411,20 @@ struct UpdateRow: View {
                 .buttonStyle(.plain)
                 .disabled(isUpdating || isPinning)
             }
-            
+
             PackageIcon(type: package.type)
-            
+
             // Package info with version arrow
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(package.name)
                         .fontWeight(.medium)
-                    
+
                     if isPinned {
                         PinnedBadge()
                     }
                 }
-                
+
                 // Version transition
                 HStack(spacing: 8) {
                     if let installedVersion = package.installedVersion {
@@ -428,20 +432,20 @@ struct UpdateRow: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    
+
                     Image(systemName: "arrow.right")
                         .font(.caption2)
                         .foregroundStyle(isPinned ? Color.secondary : Color.orange)
-                    
+
                     Text(package.outdatedVersion ?? package.version)
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundStyle(isPinned ? Color.secondary : Color.orange)
                 }
             }
-            
+
             Spacer()
-            
+
             // Action buttons (visible on hover)
             if isHovering && !isUpdating && !isPinning {
                 HStack(spacing: 8) {
@@ -455,7 +459,7 @@ struct UpdateRow: View {
                             onPin()
                         }
                     }
-                    
+
                     // Update button (only for non-pinned packages)
                     if let onUpdate = onUpdate, !isPinned {
                         PrimaryRowActionButton(label: "Update", icon: "arrow.triangle.2.circlepath", tint: .orange) {
@@ -464,7 +468,7 @@ struct UpdateRow: View {
                     }
                 }
             }
-            
+
             // Chevron
             Image(systemName: "chevron.right")
                 .font(.caption)

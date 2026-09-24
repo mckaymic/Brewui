@@ -182,7 +182,7 @@ struct PackageDetailView: View {
                 Spacer()
                 
                 if isInstalled || displayPackage.isInstalled {
-                    // Pin/Unpin button (only for formulas)
+                    // Pin/Unpin button (formulae and casks, Homebrew 6+)
                     if displayPackage.canBePinned || displayPackage.isPinned {
                         if displayPackage.isPinned, let onUnpin = onUnpin {
                             Button {
