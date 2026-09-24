@@ -93,87 +93,138 @@ struct InstalledPackagesView: View {
     // MARK: - Toolbar
     
     private var toolbarContent: some View {
-        HStack(spacing: 16) {
-            // Search field
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                
-                TextField("Search installed packages...", text: $viewModel.searchText)
-                    .textFieldStyle(.plain)
-                
-                if !viewModel.searchText.isEmpty {
-                    Button {
-                        viewModel.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
+        // Pick the widest layout that fits; stack groups rather than letting
+        // their contents wrap or truncate.
+        ViewThatFits(in: .horizontal) {
+            // Single row
+            HStack(spacing: 16) {
+                searchField
+                    .frame(minWidth: 220, maxWidth: 300)
+                Spacer(minLength: 0)
+                packageTypePicker
+                statsView
+                syncStatusView
+                refreshButton
+            }
+            
+            // Two rows
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 16) {
+                    searchField
+                        .frame(minWidth: 220, maxWidth: .infinity)
+                    packageTypePicker
                 }
-            }
-            .padding(8)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-            .frame(maxWidth: 300)
-            
-            Spacer()
-            
-            // Package type filter
-            Picker("Type", selection: $viewModel.selectedPackageType) {
-                Text("All (\(viewModel.totalCount))")
-                    .tag(Optional<BrewPackage.PackageType>.none)
-                Text("Formulas (\(viewModel.formulaCount))")
-                    .tag(Optional<BrewPackage.PackageType>.some(.formula))
-                Text("Casks (\(viewModel.caskCount))")
-                    .tag(Optional<BrewPackage.PackageType>.some(.cask))
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 320)
-            
-            // Stats
-            HStack(spacing: 12) {
-                Label("\(viewModel.requestedCount) installed", systemImage: "shippingbox")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                
-                Label("\(viewModel.dependencyCount) deps", systemImage: "link")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                
-                if viewModel.pinnedCount > 0 {
-                    Label("\(viewModel.pinnedCount) pinned", systemImage: "pin.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                HStack(spacing: 16) {
+                    statsView
+                    Spacer(minLength: 0)
+                    syncStatusView
+                    refreshButton
                 }
             }
             
-            // Sync status indicator
-            if viewModel.isSyncing {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text("Syncing...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            // Fully stacked
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    searchField
+                        .frame(maxWidth: .infinity)
+                    refreshButton
                 }
-            } else {
-                Text("Updated \(viewModel.lastSyncDescription)")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            
-            // Refresh button
-            Button {
-                Task {
-                    await viewModel.refresh()
+                packageTypePicker
+                HStack(spacing: 12) {
+                    statsView
+                    Spacer(minLength: 0)
+                    syncStatusView
                 }
-            } label: {
-                Image(systemName: "arrow.clockwise")
             }
-            .disabled(viewModel.isLoading || viewModel.isSyncing)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+    }
+    
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            
+            TextField("Search installed packages...", text: $viewModel.searchText)
+                .textFieldStyle(.plain)
+            
+            if !viewModel.searchText.isEmpty {
+                Button {
+                    viewModel.searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(8)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+    
+    private var packageTypePicker: some View {
+        Picker("Type", selection: $viewModel.selectedPackageType) {
+            Text("All (\(viewModel.totalCount))")
+                .tag(Optional<BrewPackage.PackageType>.none)
+            Text("Formulas (\(viewModel.formulaCount))")
+                .tag(Optional<BrewPackage.PackageType>.some(.formula))
+            Text("Casks (\(viewModel.caskCount))")
+                .tag(Optional<BrewPackage.PackageType>.some(.cask))
+        }
+        .pickerStyle(.segmented)
+        .fixedSize()
+    }
+    
+    private var statsView: some View {
+        HStack(spacing: 12) {
+            Label("\(viewModel.requestedCount) installed", systemImage: "shippingbox")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Label("\(viewModel.dependencyCount) deps", systemImage: "link")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            
+            if viewModel.pinnedCount > 0 {
+                Label("\(viewModel.pinnedCount) pinned", systemImage: "pin.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+    
+    @ViewBuilder
+    private var syncStatusView: some View {
+        if viewModel.isSyncing {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .scaleEffect(0.7)
+                Text("Syncing...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .fixedSize()
+        } else {
+            Text("Updated \(viewModel.lastSyncDescription)")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .fixedSize()
+        }
+    }
+    
+    private var refreshButton: some View {
+        Button {
+            Task {
+                await viewModel.refresh()
+            }
+        } label: {
+            Image(systemName: "arrow.clockwise")
+        }
+        .disabled(viewModel.isLoading || viewModel.isSyncing)
     }
     
     // MARK: - Packages List
